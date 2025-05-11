@@ -4,8 +4,6 @@ stages:
     deps:
       - src/prepare.py
       - data/
-    outs:
-      - data/
 
   train:
     cmd: uv run src/train.py
