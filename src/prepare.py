@@ -4,7 +4,7 @@ import pandas as pd
 import argparse
 
 INPUT_DIR = "data"
-THRESHOLD = 4.0
+THRESHOLD = 2.2
 MIN_FREQ = 100
 LOG_FILE = "prepare_log.csv"
 
