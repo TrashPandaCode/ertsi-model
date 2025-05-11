@@ -1,4 +1,12 @@
 stages:
+  prepare:
+    cmd: uv run src/prepare.py
+    deps:
+      - src/prepare.py
+      - data/
+    outs:
+      - data/
+
   train:
     cmd: uv run src/train.py
     deps:
