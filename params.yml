@@ -1,0 +1,9 @@
+prepare:
+  data_dir: data/
+
+train:
+  epochs: 10
+  batch_size: 32
+  lr: 0.001
+  freq_subset: [125, 250, 500, 1000, 2000, 4000]
+  model_out: model.pth
