@@ -19,14 +19,14 @@ csv_files = glob.glob(os.path.join(INPUT_DIR, "**", "rt60.csv"), recursive=True)
 
 for csv_path in csv_files:
     df = pd.read_csv(csv_path)
-    modified = False
+
+    # Filter out frequencies below MIN_FREQ
+    df = df[df["Frequency (Hz)"] >= MIN_FREQ]
+    df = df.reset_index(drop=True)
 
     for i in range(len(df)):
         freq = df.at[i, "Frequency (Hz)"]
         rt60 = df.at[i, "RT60 (s)"]
-
-        if freq < MIN_FREQ:
-            continue  # Skip low frequencies
 
         if rt60 > THRESHOLD:
             # Compute replacement value
@@ -48,9 +48,8 @@ for csv_path in csv_files:
             # Replace if not dry-run
             if not args.dry_run:
                 df.at[i, "RT60 (s)"] = new_val
-                modified = True
 
-    if modified and not args.dry_run:
+    if not args.dry_run:
         df.to_csv(csv_path, index=False)
         print(f"🛠️  Modified: {csv_path}")
     else:
