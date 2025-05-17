@@ -2,16 +2,18 @@ from dataset import ReverbDataset
 from model import ReverbCNN
 from torch.utils.data import DataLoader
 from torch import nn
-import yaml
 import torch
 import json
 
-def load_params(path="params.yml"):
-    with open(path, "r") as f:
-        return yaml.safe_load(f)
+params = {
+    "epochs": 10,
+    "batch_size": 32,
+    "lr": 0.001,
+    "freq_subset": [125, 250, 500, 1000, 2000, 4000],
+    "model_out": "model.pth",
+}
 
 def evaluate():
-    params = load_params()
     cfg = params["train"]
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
