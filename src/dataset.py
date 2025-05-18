@@ -16,7 +16,12 @@ class ReverbRoomDataset(Dataset):
 
         for room_path in room_dirs:
             rt60_path = os.path.join(room_path, "rt60.csv")
-            df = pd.read_csv(rt60_path)
+            
+            try:
+                df = pd.read_csv(rt60_path)
+            except FileNotFoundError:
+                print(f"RT60 file not found in {room_path}. Skipping this directory.")
+                continue
 
             if self.freqs:
                 df = df[df["Frequency (Hz)"].isin(self.freqs)]
@@ -28,12 +33,10 @@ class ReverbRoomDataset(Dataset):
                 self.entries.append((image_path, rt60_vector))
     
     def __len__(self):
-        print(f"Number of entries: {len(self.entries)}")
         return len(self.entries)
 
     def __getitem__(self, idx):
         img_path, rt60 = self.entries[idx]
-        #image = Image(img_path).convert("RGB")
         image = Image.open(img_path).convert("RGB")
         image = self.transform(image)
         return image, rt60
