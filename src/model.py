@@ -1,25 +1,28 @@
-from torch import nn
 import torch
+import load_model
+from torch import nn
+from torchvision import models
+
 
 class ReverbCNN(nn.Module):
-    def __init__(self, num_frequencies):
+    def __init__(self, num_frequencies=6):
         super().__init__()
-        self.conv = nn.Sequential(
-            nn.Conv2d(3, 16, 3, padding=1), nn.ReLU(), nn.MaxPool2d(2),
-            nn.Conv2d(16, 32, 3, padding=1), nn.ReLU(), nn.MaxPool2d(2),
-        )
-        with torch.no_grad():
-            dummy_input = torch.zeros(1, 3, 400, 500)
-            conv_out = self.conv(dummy_input)
-            self.flat_dim = conv_out.view(1, -1).shape[1]
-        self.fc = nn.Sequential(
+
+        base = load_model.resnet50_places365()
+        self.backbone = nn.Sequential(*list(base.children())[:-2])
+        self.pool = nn.AdaptiveAvgPool2d((1, 1))
+
+        self.regressor = nn.Sequential(
             nn.Flatten(),
-            nn.Linear(self.flat_dim, 128),  # Adjust input size
+            nn.Linear(2048, 256),   #(512, 256) for ResNet18
             nn.ReLU(),
-            nn.Linear(128, num_frequencies)
+            nn.Dropout(0.3),
+            nn.Linear(256, num_frequencies)
         )
 
     def forward(self, x):
         print("Input shape:", x.shape)
-        x = self.conv(x)
-        return self.fc(x)
+        x = self.backbone(x)
+        x = self.pool(x)
+        x = self.regressor(x)
+        return x

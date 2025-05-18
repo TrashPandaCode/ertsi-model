@@ -11,8 +11,12 @@ class ReverbRoomDataset(Dataset):
         self.entries = []
         self.freqs = freqs
         self.transform = transform or T.Compose([
-            T.Resize((400,500)),
-            T.ToTensor()
+            transforms.Resize((224, 224)),
+            transforms.ToTensor(),
+            transforms.Normalize(
+                mean=[0.485, 0.456, 0.406],
+                std=[0.229, 0.224, 0.225]
+            )
         ])
 
         room_dirs = [d for d in glob.glob(os.path.join(data_root, "*")) if os.path.isdir(d)]

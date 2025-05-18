@@ -2,6 +2,7 @@ from dataset import ReverbRoomDataset
 from model import ReverbCNN
 from torch.utils.data import DataLoader
 from torch import nn, optim
+from torchvision import transforms
 import torch
 
 params = {
