@@ -1,4 +1,4 @@
-from dataset import ReverbDataset
+from dataset import ReverbRoomDataset
 from model import ReverbCNN
 from torch.utils.data import DataLoader
 from torch import nn, optim
@@ -8,26 +8,24 @@ params = {
     "epochs": 10,
     "batch_size": 32,
     "lr": 0.001,
-    "freq_subset": [125, 250, 500, 1000, 2000, 4000],
+    "freqs": [125, 250, 500, 1000, 2000, 4000],
     "model_out": "model.pth",
 }
 
 def train():
-    cfg = params["train"]
-
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    dataset = ReverbDataset(cfg["data_root"], freqs=cfg["freqs"])
-    dataloader = DataLoader(dataset, batch_size=cfg["batch_size"], shuffle=True)
+    dataset = ReverbRoomDataset("data", freqs=params["freqs"])
+    dataloader = DataLoader(dataset, batch_size=params["batch_size"], shuffle=True)
 
-    model = ReverbCNN(num_frequencies=len(cfg["freqs"])).to(device)
+    model = ReverbCNN(num_frequencies=len(params["freqs"])).to(device)
     model = torch.compile(model)
 
-    optimizer = optim.Adam(model.parameters(), lr=cfg["lr"])
+    optimizer = optim.Adam(model.parameters(), lr=params["lr"])
     loss_fn = nn.MSELoss()
 
     model.train()
-    for epoch in range(cfg["epochs"]):
+    for epoch in range(params["epochs"]):
         running_loss = 0.0
         for inputs, targets in dataloader:
             inputs, targets = inputs.to(device), targets.to(device)
@@ -41,10 +39,10 @@ def train():
             running_loss += loss.item()
 
         avg_loss = running_loss / len(dataloader)
-        print(f"Epoch [{epoch + 1}/{cfg['epochs']}], Loss: {avg_loss:.4f}")
+        print(f"Epoch [{epoch + 1}/{params['epochs']}], Loss: {avg_loss:.4f}")
 
-    torch.save(model.state_dict(), cfg["model_out"])
-    print(f"Model saved to {cfg['model_out']}")
+    torch.save(model.state_dict(), params["model_out"])
+    print(f"Model saved to {params['model_out']}")
 
 
 if __name__ == "__main__":

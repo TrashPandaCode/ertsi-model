@@ -1,6 +1,7 @@
 import os
 import glob
 from torch.utils.data import Dataset
+import torchvision.transforms as T
 import pandas as pd
 from PIL import Image
 import torch
@@ -8,7 +9,7 @@ import torch
 class ReverbRoomDataset(Dataset):
     def __init__(self, data_root, transform=None, freqs=None):
         self.entries = []
-        self.transform = transform or transform.ToTensor()
+        self.transform = transform or T.ToTensor()
         self.freqs = freqs
 
         room_dirs = [d for d in glob.glob(os.path.join(data_root, "*")) if os.path.isdir(d)]
@@ -27,10 +28,12 @@ class ReverbRoomDataset(Dataset):
                 self.entries.append((image_path, rt60_vector))
     
     def __len__(self):
+        print(f"Number of entries: {len(self.entries)}")
         return len(self.entries)
 
     def __getitem__(self, idx):
         img_path, rt60 = self.entries[idx]
-        image = Image(img_path).convert("RGB")
+        #image = Image(img_path).convert("RGB")
+        image = Image.open(img_path).convert("RGB")
         image = self.transform(image)
         return image, rt60
