@@ -19,7 +19,7 @@ def train():
     dataloader = DataLoader(dataset, batch_size=params["batch_size"], shuffle=True)
 
     model = ReverbCNN(num_frequencies=len(params["freqs"])).to(device)
-    model = torch.compile(model)
+    #model = torch.compile(model)
 
     optimizer = optim.Adam(model.parameters(), lr=params["lr"])
     loss_fn = nn.MSELoss()

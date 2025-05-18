@@ -1,4 +1,5 @@
 /data
+model.pth
 data_version.txt
 data.zip
 __pycache__
