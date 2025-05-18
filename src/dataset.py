@@ -9,8 +9,11 @@ import torch
 class ReverbRoomDataset(Dataset):
     def __init__(self, data_root, transform=None, freqs=None):
         self.entries = []
-        self.transform = transform or T.ToTensor()
         self.freqs = freqs
+        self.transform = transform or T.Compose([
+            T.Resize((1500,2000)),
+            T.ToTensor()
+        ])
 
         room_dirs = [d for d in glob.glob(os.path.join(data_root, "*")) if os.path.isdir(d)]
 
