@@ -13,7 +13,7 @@ params = {
 }
 
 def train():
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cpu")
 
     dataset = ReverbRoomDataset("data", freqs=params["freqs"])
     dataloader = DataLoader(dataset, batch_size=params["batch_size"], shuffle=True)

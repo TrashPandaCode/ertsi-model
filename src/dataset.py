@@ -11,7 +11,7 @@ class ReverbRoomDataset(Dataset):
         self.entries = []
         self.freqs = freqs
         self.transform = transform or T.Compose([
-            T.Resize((1500,2000)),
+            T.Resize((400,500)),
             T.ToTensor()
         ])
 

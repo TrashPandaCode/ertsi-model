@@ -9,7 +9,7 @@ class ReverbCNN(nn.Module):
             nn.Conv2d(16, 32, 3, padding=1), nn.ReLU(), nn.MaxPool2d(2),
         )
         with torch.no_grad():
-            dummy_input = torch.zeros(1, 3, 1500, 2000)
+            dummy_input = torch.zeros(1, 3, 400, 500)
             conv_out = self.conv(dummy_input)
             self.flat_dim = conv_out.view(1, -1).shape[1]
         self.fc = nn.Sequential(
