@@ -4,3 +4,7 @@ data_version.txt
 data.zip
 __pycache__
 .DS_Store
+logs
+checkpoints
+output
+evaluation

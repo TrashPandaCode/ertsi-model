@@ -17,6 +17,8 @@ class ReverbRoomDataset(Dataset):
                 mean=[0.485, 0.456, 0.406],
                 std=[0.229, 0.224, 0.225]
             )
+
+            # TODO: add augmentation
         ])
 
         room_dirs = [d for d in glob.glob(os.path.join(data_root, "*")) if os.path.isdir(d)]

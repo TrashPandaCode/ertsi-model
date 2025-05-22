@@ -1,3 +1,3 @@
 # TODO
 
-- look into pytorch lightning
+- add augmentations
