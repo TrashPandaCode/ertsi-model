@@ -24,13 +24,9 @@ def train():
     # Create output directory if it doesn't exist
     os.makedirs(os.path.dirname(params["model_out"]), exist_ok=True)
     
-    # Load dataset
-    dataset = ReverbRoomDataset("data", freqs=params["freqs"])
-    
-    # Split dataset into train and validation
-    train_size = int(0.8 * len(dataset))
-    val_size = len(dataset) - train_size
-    train_dataset, val_dataset = random_split(dataset, [train_size, val_size])
+    # Load datasets
+    train_dataset = ReverbRoomDataset("data/train", freqs=params["freqs"], augment=True)
+    val_dataset = ReverbRoomDataset("data/val", freqs=params["freqs"], augment=False)
     
     # Create dataloaders
     train_loader = DataLoader(

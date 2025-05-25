@@ -10,7 +10,7 @@ from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 
 from seed import set_seeds
 
-def evaluate(model_path="output/reverbcnn.pt", data_dir="data", batch_size=32):
+def evaluate(model_path="output/reverbcnn.pt", data_dir="data_split/test", batch_size=32):
     set_seeds(42)
     
     # Check if CUDA is available
@@ -21,7 +21,7 @@ def evaluate(model_path="output/reverbcnn.pt", data_dir="data", batch_size=32):
     freqs = [125, 250, 500, 1000, 2000, 4000]
     
     # Load the dataset
-    dataset = ReverbRoomDataset(data_dir, freqs=freqs)
+    dataset = ReverbRoomDataset(data_dir, freqs=freqs, augment=False)
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=4)
     
     # Load the model
