@@ -13,7 +13,7 @@ from pytorch_grad_cam.utils.image import show_cam_on_image
 
 # Configuration
 MODEL_PATH = "output/reverbcnn.pt"  # Path to your trained model
-DATA_DIR = "data"  # Root directory of your dataset
+DATA_DIR = "data/train"  # Root directory of your dataset
 NUM_FREQUENCIES = 6  # Should match your model's configuration
 NUM_RANDOM_SAMPLES = 3  # Number of random images to select
 FREQUENCIES_TO_VISUALIZE = [0, 2, 5]  # Indices of frequency bands to visualize (e.g., 0 for 125Hz, 1 for 250Hz, etc.)
