@@ -1,7 +1,5 @@
 # TODO
 
-- differentiate between real and synthetic data
-
 ```
 data
 	test

@@ -1,37 +1,49 @@
-import random
-from glob import glob
 import os
 import shutil
+import random
+from glob import glob
 
-# This script splits the dataset into train, validation, and test sets.
-
-DATA_ROOT = "data"
-OUTPUT_ROOT = "data_split"
 SEED = 42
-TEST_RATIO = 0.2
 VAL_RATIO = 0.1
+TEST_RATIO = 0.2  # only applies to real data
+INPUT_ROOT = "data_orig"
+OUTPUT_ROOT = "data"
 
 random.seed(SEED)
 
-room_dirs = [d for d in glob(os.path.join(DATA_ROOT, "*")) if os.path.isdir(d)]
-random.shuffle(room_dirs)
+def split_rooms(room_paths, test_ratio=0.0, val_ratio=0.1):
+    random.shuffle(room_paths)
+    n_total = len(room_paths)
+    n_test = int(test_ratio * n_total)
+    n_val = int(val_ratio * n_total)
 
-n_total = len(room_dirs)
-n_test = int(n_total * TEST_RATIO)
-n_val = int(n_total * VAL_RATIO)
+    test = room_paths[:n_test]
+    val = room_paths[n_test:n_test + n_val]
+    train = room_paths[n_test + n_val:]
 
-test_rooms = room_dirs[:n_test]
-val_rooms = room_dirs[n_test:n_test + n_val]
-train_rooms = room_dirs[n_test + n_val:]
+    return train, val, test
 
-splits = [("train", train_rooms), 
-          ("val", val_rooms), 
-          ("test", test_rooms)]
-
-for split_name, rooms in splits:
-    for room in rooms:
-        dest = os.path.join(OUTPUT_ROOT, split_name, os.path.basename(room))
+def copy_rooms(room_list, split, domain):
+    for room_path in room_list:
+        dest = os.path.join(OUTPUT_ROOT, split, domain, os.path.basename(room_path))
         os.makedirs(os.path.dirname(dest), exist_ok=True)
-        shutil.copytree(room, dest)
+        shutil.copytree(room_path, dest)
 
-print(f"Data split into {len(train_rooms)} train, {len(val_rooms)} val, {len(test_rooms)} test rooms.")
+# Split REAL dataset
+real_rooms = [d for d in glob(os.path.join(INPUT_ROOT, "real", "*")) if os.path.isdir(d)]
+real_train, real_val, real_test = split_rooms(real_rooms, test_ratio=TEST_RATIO, val_ratio=VAL_RATIO)
+
+# Split SYNTH dataset
+synth_rooms = [d for d in glob(os.path.join(INPUT_ROOT, "synth", "*")) if os.path.isdir(d)]
+synth_train, synth_val, _ = split_rooms(synth_rooms, test_ratio=0.0, val_ratio=VAL_RATIO)  # no synth test
+
+# Copy files
+copy_rooms(real_train, "train", "real")
+copy_rooms(real_val, "val", "real")
+copy_rooms(real_test, "test", "real")
+
+copy_rooms(synth_train, "train", "synth")
+copy_rooms(synth_val, "val", "synth")
+
+print(f"  Real -> Train: {len(real_train)}, Val: {len(real_val)}, Test: {len(real_test)}")
+print(f"  Synth -> Train: {len(synth_train)}, Val: {len(synth_val)}")

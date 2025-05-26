@@ -13,10 +13,10 @@ from pytorch_grad_cam.utils.image import show_cam_on_image
 
 # Configuration
 MODEL_PATH = "output/reverbcnn.pt"  # Path to your trained model
-DATA_DIR = "data/train"  # Root directory of your dataset
+DATA_DIR = "data/test/real"  # Root directory of your dataset
 NUM_FREQUENCIES = 6  # Should match your model's configuration
 NUM_RANDOM_SAMPLES = 3  # Number of random images to select
-FREQUENCIES_TO_VISUALIZE = [0, 2, 5]  # Indices of frequency bands to visualize (e.g., 0 for 125Hz, 1 for 250Hz, etc.)
+FREQUENCIES_TO_VISUALIZE = [0, 2, 5]  # Indices of frequency bands to visualize (e.g., 0 for 250Hz, 1 for 500Hz, etc.)
 OUTPUT_DIR = "evaluation/gradcam"  # Directory to save Grad-CAM outputs
 
 # Create output directory if it doesn't exist
@@ -50,7 +50,7 @@ def apply_grad_cam():
     # 3. Load Sample Image and Preprocess
     # Frequencies used during training, needed for dataset initialization if it filters by them
     # These are the default frequencies from train.py
-    training_freqs = [125, 250, 500, 1000, 2000, 4000] 
+    training_freqs = [250, 500, 1000, 2000, 4000, 8000] 
     dataset = ReverbRoomDataset(DATA_DIR, freqs=training_freqs)
 
     if len(dataset) == 0:
