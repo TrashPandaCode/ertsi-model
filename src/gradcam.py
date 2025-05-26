@@ -16,7 +16,7 @@ MODEL_PATH = "output/reverbcnn.pt"  # Path to your trained model
 DATA_DIR = "data/test/real"  # Root directory of your dataset
 NUM_FREQUENCIES = 6  # Should match your model's configuration
 NUM_RANDOM_SAMPLES = 3  # Number of random images to select
-FREQUENCIES_TO_VISUALIZE = [0, 2, 5]  # Indices of frequency bands to visualize (e.g., 0 for 250Hz, 1 for 500Hz, etc.)
+FREQUENCIES_TO_VISUALIZE = [0, 1, 2, 3, 4, 5]  # Indices of frequency bands to visualize (e.g., 0 for 250Hz, 1 for 500Hz, etc.)
 OUTPUT_DIR = "evaluation/gradcam"  # Directory to save Grad-CAM outputs
 
 # Create output directory if it doesn't exist
