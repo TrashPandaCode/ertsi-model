@@ -6,11 +6,13 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "grad-cam>=1.5.5",
+    "ipykernel>=6.29.5",
     "lightning>=2.5.1.post0",
     "matplotlib>=3.10.3",
     "pandas>=2.2.3",
     "pillow>=11.2.1",
     "pyyaml>=6.0.2",
+    "seaborn>=0.13.2",
     "tensorboard>=2.19.0",
     "torch>=2.7.0",
     "torchvision>=0.22.0",
