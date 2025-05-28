@@ -9,8 +9,12 @@ import torch
 
 from seed import set_seeds
 
+
 def train():
     set_seeds(42)
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Training will use: {device}")
 
     params = {
         "synth_epochs": 100,  # Epochs for training on synthetic data
@@ -19,14 +23,16 @@ def train():
         "lr": 0.001,
         "fine_tune_lr": 0.0001,  # Lower learning rate for fine-tuning
         "freqs": [250, 500, 1000, 2000, 4000, 8000],
-        "synth_model_out": "output/reverbcnn_synth.pt",  # Checkpoint after synthetic training
-        "final_model_out": "output/reverbcnn.pt",  # Final fine-tuned model
+        "synth_model_out": "output/exV3-reverbcnn_synth.pt",  # Checkpoint after synthetic training
+        "final_model_out": "output/exV3-reverbcnn.pt",  # Final fine-tuned model
     }
 
     os.makedirs(os.path.dirname(params["synth_model_out"]), exist_ok=True)
 
     synth_train = ReverbRoomDataset(
-        "data/train/synth", freqs=params["freqs"], augment=True
+        ["data/train/synth/hybrid", "data/train/synth/non-hybrid"],
+        freqs=params["freqs"],
+        augment=True,
     )
     synth_val = ReverbRoomDataset(
         "data/val/synth", freqs=params["freqs"], augment=False
@@ -63,7 +69,7 @@ def train():
 
     checkpoint_callback_synth = ModelCheckpoint(
         dirpath="checkpoints/synth",
-        filename="reverbcnn-synth-{epoch:02d}-{val_loss:.4f}",
+        filename="exV3-reverbcnn-synth-{epoch:02d}-{val_loss:.4f}",
         save_top_k=3,
         monitor="val_loss",
         mode="min",
@@ -73,7 +79,7 @@ def train():
         monitor="val_loss", patience=5, mode="min"
     )
 
-    logger_synth = TensorBoardLogger("logs", name="reverbcnn_synth")
+    logger_synth = TensorBoardLogger("logs", name="exV3-reverbcnn_synth")
 
     trainer_synth = pl.Trainer(
         max_epochs=params["synth_epochs"],
@@ -87,7 +93,7 @@ def train():
 
     # Save the model after synthetic training
     torch.save(model.state_dict(), params["synth_model_out"])
-    print(f"Synthetic model saved to {params["synth_model_out"]}")
+    print(f"Synthetic model saved to {params['synth_model_out']}")
 
     print("\n=== STAGE 2: Fine-tuning on real data ===")
 
@@ -96,17 +102,19 @@ def train():
 
     checkpoint_callback_real = ModelCheckpoint(
         dirpath="checkpoints/real",
-        filename="reverbcnn-real-{epoch:02d}-{val_loss:.4f}",
+        filename="exV3-reverbcnn-real-{epoch:02d}-{val_loss:.4f}",
         save_top_k=3,
         monitor="val_loss",
         mode="min",
     )
 
     early_stop_callback_real = EarlyStopping(
-        monitor="val_loss", patience=10, mode="min"  # More patience for fine-tuning
+        monitor="val_loss",
+        patience=10,
+        mode="min",  # More patience for fine-tuning
     )
 
-    logger_real = TensorBoardLogger("logs", name="reverbcnn_real_finetune")
+    logger_real = TensorBoardLogger("logs", name="exV3-reverbcnn_real_finetune")
 
     trainer_real = pl.Trainer(
         max_epochs=params["real_epochs"],

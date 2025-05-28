@@ -37,8 +37,13 @@ class ReverbRoomDataset(Dataset):
 
         self.transform = transform or T.Compose(base_transforms)
 
+        data_root_list = data_root if isinstance(data_root, list) else [data_root]
+
         room_dirs = [
-            d for d in glob.glob(os.path.join(data_root, "*")) if os.path.isdir(d)
+            d
+            for root in data_root_list
+            for d in glob.glob(os.path.join(root, "*"))
+            if os.path.isdir(d)
         ]
 
         for room_path in room_dirs:
