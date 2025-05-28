@@ -5,6 +5,11 @@ import load_model
 from torchvision import models
 
 class ReverbCNN(pl.LightningModule):
+    def enable_dropout(self):
+        for m in self.modules():
+            if isinstance(m, torch.nn.Dropout):
+                m.train()
+
     def __init__(self, num_frequencies=6, learning_rate=0.001):
         super().__init__()
         

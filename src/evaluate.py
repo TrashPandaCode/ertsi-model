@@ -7,24 +7,22 @@ import os
 import json
 import matplotlib.pyplot as plt
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
+import seaborn as sns
+import pandas as pd
 
 from seed import set_seeds
 
 def evaluate(model_path="output/reverbcnn.pt", data_dir="data/test/real", batch_size=32):
     set_seeds(42)
     
-    # Check if CUDA is available
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
     
-    # Define frequencies
     freqs = [250, 500, 1000, 2000, 4000, 8000]
     
-    # Load the dataset
     dataset = ReverbRoomDataset(data_dir, freqs=freqs, augment=False)
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=4)
     
-    # Load the model
     model = ReverbCNN(num_frequencies=len(freqs))
     model.load_state_dict(torch.load(model_path, map_location=device))
     model.to(device)
@@ -55,7 +53,6 @@ def evaluate(model_path="output/reverbcnn.pt", data_dir="data/test/real", batch_
         "overall": {}
     }
     
-    # Calculate overall metrics
     mse = mean_squared_error(all_targets, all_preds)
     rmse = np.sqrt(mse)
     mae = mean_absolute_error(all_targets, all_preds)
@@ -85,7 +82,6 @@ def evaluate(model_path="output/reverbcnn.pt", data_dir="data/test/real", batch_
             "r2": float(freq_r2)
         }
     
-    # Print metrics
     print("\n=== Overall Performance ===")
     print(f"MSE: {mse:.4f}")
     print(f"RMSE: {rmse:.4f}")
@@ -101,14 +97,11 @@ def evaluate(model_path="output/reverbcnn.pt", data_dir="data/test/real", batch_
         print(f"MAE: {freq_metrics['mae']:.4f}")
         print(f"R²: {freq_metrics['r2']:.4f}")
     
-    # Create output directory if it doesn't exist
     os.makedirs("evaluation", exist_ok=True)
     
-    # Save metrics to JSON
     with open("evaluation/metrics.json", "w") as f:
         json.dump(metrics, f, indent=4)
     
-    # Create visualization directory
     os.makedirs("evaluation/plots", exist_ok=True)
     
     # Plot predictions vs ground truth for each frequency
@@ -180,6 +173,121 @@ def evaluate(model_path="output/reverbcnn.pt", data_dir="data/test/real", batch_
     plt.tight_layout()
     plt.savefig("evaluation/plots/frequency_examples.png")
     
+    # ---------------------------
+    # MONTE CARLO DROPOUT INFERENCE
+    # ---------------------------
+    print("\nPerforming MC Dropout inference for uncertainty estimation...")
+    model.enable_dropout()
+    num_mc_samples = 20
+    
+    mc_preds = []
+    with torch.no_grad():
+        for _ in range(num_mc_samples):
+            preds_batch = []
+            for inputs, _ in dataloader:
+                inputs = inputs.to(device)
+                outputs = model(inputs)
+                preds_batch.append(outputs.cpu().numpy())
+            mc_preds.append(np.concatenate(preds_batch, axis=0))
+    
+    mc_preds = np.stack(mc_preds, axis=0)  # Shape: [num_mc_samples, num_examples, num_freqs]
+    mc_means = mc_preds.mean(axis=0)       # Shape: [num_examples, num_freqs]
+    mc_stds = mc_preds.std(axis=0)         # Shape: [num_examples, num_freqs]
+    
+    # Plot Uncertainty Distribution for each frequency
+    plt.figure(figsize=(15, 10))
+    for i, freq in enumerate(freqs):
+        plt.subplot(2, 3, i+1)
+        plt.hist(mc_stds[:, i], bins=30, alpha=0.7)
+        plt.title(f'Uncertainty (STD) at {freq} Hz')
+        plt.xlabel('Prediction Std Dev (seconds)')
+        plt.ylabel('Count')
+    plt.tight_layout()
+    plt.savefig("evaluation/plots/uncertainty_distribution.png")
+    
+    # Plot MC mean ± std vs ground truth
+    plt.figure(figsize=(15, 10))
+    for i, freq in enumerate(freqs):
+        plt.subplot(2, 3, i+1)
+        plt.errorbar(all_targets[:, i], mc_means[:, i], yerr=mc_stds[:, i],
+                     fmt='o', alpha=0.4, ecolor='gray', capsize=2)
+        plt.plot([all_targets[:, i].min(), all_targets[:, i].max()],
+                 [all_targets[:, i].min(), all_targets[:, i].max()],
+                 'r--')
+        plt.title(f'Prediction ± Uncertainty: {freq} Hz')
+        plt.xlabel('Ground Truth')
+        plt.ylabel('Prediction')
+    plt.tight_layout()
+    plt.savefig("evaluation/plots/prediction_with_uncertainty.png")
+
+    # ---------------------------
+    # Continuous Error Heatmap
+    # ---------------------------
+    print("\nGenerating Continuous Error Heatmap...")
+    plt.figure(figsize=(15, 10))
+    for i, freq in enumerate(freqs):
+        plt.subplot(2, 3, i + 1)
+
+        df = pd.DataFrame({
+            "Ground Truth": all_targets[:, i],
+            "Prediction": all_preds[:, i]
+        })
+
+        sns.histplot(
+            data=df,
+            x="Ground Truth",
+            y="Prediction",
+            bins=30,
+            pthresh=0.01,
+            cmap="viridis"
+        )
+
+        plt.plot(
+            [df["Ground Truth"].min(), df["Ground Truth"].max()],
+            [df["Ground Truth"].min(), df["Ground Truth"].max()],
+            'r--', label='Ideal'
+        )
+        plt.xlabel("Ground Truth RT60 (s)")
+        plt.ylabel("Predicted RT60 (s)")
+        plt.title(f"RT60 Density Heatmap @ {freq} Hz")
+        plt.legend()
+
+    plt.tight_layout()
+    plt.savefig("evaluation/plots/rt60_heatmap_density.png")
+
+    plt.figure(figsize=(15, 10))
+    for i, freq in enumerate(freqs):
+        plt.subplot(2, 3, i + 1)
+
+        df = pd.DataFrame({
+            "Ground Truth": all_targets[:, i],
+            "Prediction": all_preds[:, i]
+        })
+
+        # Joint KDE plot with contours
+        sns.kdeplot(
+            data=df,
+            x="Ground Truth",
+            y="Prediction",
+            fill=True,
+            cmap="magma",
+            thresh=0.05,
+            levels=100
+        )
+
+        # Ideal line (perfect prediction)
+        min_val = min(df["Ground Truth"].min(), df["Prediction"].min())
+        max_val = max(df["Ground Truth"].max(), df["Prediction"].max())
+        plt.plot([min_val, max_val], [min_val, max_val], 'c--', label='Ideal')
+
+        plt.xlabel("Ground Truth RT60 (s)")
+        plt.ylabel("Predicted RT60 (s)")
+        plt.title(f"KDE Heatmap @ {freq} Hz")
+        plt.legend()
+
+    plt.tight_layout()
+    plt.savefig("evaluation/plots/rt60_kde_heatmap.png")
+
     print(f"\nEvaluation complete. Results saved to 'evaluation/' directory.")
     return metrics
 
