@@ -16,7 +16,7 @@ dependencies = [
     "tensorboard>=2.19.0",
     "torch>=2.5.1",
     "torchvision>=0.20.1",
-    "webdavclient>=1.0.8",
+    "webdavclient3>=3.14.6",
 ]
 
 [[tool.uv.index]]
