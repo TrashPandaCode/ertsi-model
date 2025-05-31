@@ -13,9 +13,6 @@ from seed import set_seeds
 def train():
     set_seeds(42)
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Training will use: {device}")
-
     params = {
         "synth_epochs": 100,  # Epochs for training on synthetic data
         "real_epochs": 50,  # Epochs for fine-tuning on real data

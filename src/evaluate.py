@@ -10,11 +10,14 @@ from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 import seaborn as sns
 import pandas as pd
 
+from improved_model import ImprovedReverbCNN
 from seed import set_seeds
 
 
 def evaluate(
-    model_path="output/exV3-reverbcnn.pt", data_dir="data/test/real", batch_size=32
+    model_path="output/improved_reverbcnn_final_ensemble_0.pt",
+    data_dir="data/test/real",
+    batch_size=32,
 ):
     set_seeds(42)
 
@@ -28,7 +31,7 @@ def evaluate(
         dataset, batch_size=batch_size, shuffle=False, num_workers=4
     )
 
-    model = ReverbCNN(num_frequencies=len(freqs))
+    model = ImprovedReverbCNN(num_frequencies=len(freqs))
     model.load_state_dict(torch.load(model_path, map_location=device))
     model.to(device)
     model.eval()

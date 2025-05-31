@@ -12,7 +12,7 @@ from pytorch_grad_cam import GradCAM
 from pytorch_grad_cam.utils.image import show_cam_on_image
 
 # Configuration
-MODEL_PATH = "output/exV3-reverbcnn.pt"  # Path to your trained model
+MODEL_PATH = "output/exV4-reverbcnn.pt"  # Path to your trained model
 DATA_DIR = "data/test/real"  # Root directory of your dataset
 NUM_FREQUENCIES = 6  # Should match your model's configuration
 NUM_RANDOM_SAMPLES = 3  # Number of random images to select
@@ -24,7 +24,7 @@ FREQUENCIES_TO_VISUALIZE = [
     4,
     5,
 ]  # Indices of frequency bands to visualize (e.g., 0 for 250Hz, 1 for 500Hz, etc.)
-OUTPUT_DIR = "evaluation/gradcam"  # Directory to save Grad-CAM outputs
+OUTPUT_DIR = "exV4-evaluation/gradcam"  # Directory to save Grad-CAM outputs
 
 # Create output directory if it doesn't exist
 os.makedirs(OUTPUT_DIR, exist_ok=True)
