@@ -1,6 +1,6 @@
 from dataset import ReverbRoomDataset
 from model import ReverbCNN
-from torch.utils.data import DataLoader, random_split
+from torch.utils.data import DataLoader
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
 from pytorch_lightning.loggers import TensorBoardLogger

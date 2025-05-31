@@ -14,7 +14,7 @@ from seed import set_seeds
 
 
 def evaluate(
-    model_path="output/exV1-reverbcnn.pt", data_dir="data/test/real", batch_size=32
+    model_path="output/exV3-reverbcnn.pt", data_dir="data/test/real", batch_size=32
 ):
     set_seeds(42)
 
