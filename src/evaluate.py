@@ -15,7 +15,7 @@ from seed import set_seeds
 
 
 def evaluate(
-    model_path="output/improved_reverbcnn_final_ensemble_0.pt",
+    model_path="output/improved_reverbcnn_final_ensemble_2.pt",
     data_dir="data/test/real",
     batch_size=32,
 ):
