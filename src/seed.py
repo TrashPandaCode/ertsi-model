@@ -3,6 +3,7 @@ import numpy as np
 import torch
 import pytorch_lightning as pl
 
+
 def set_seeds(seed=42):
     """Set seeds for reproducibility."""
     torch.manual_seed(seed)

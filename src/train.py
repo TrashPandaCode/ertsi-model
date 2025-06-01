@@ -9,6 +9,7 @@ import torch
 
 from seed import set_seeds
 
+
 def train():
     set_seeds(42)
 

@@ -9,7 +9,9 @@ MIN_FREQ = 100
 LOG_FILE = "prepare_log.csv"
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--dry-run", action="store_true", help="Preview changes without modifying files")
+parser.add_argument(
+    "--dry-run", action="store_true", help="Preview changes without modifying files"
+)
 args = parser.parse_args()
 
 log_entries = []
@@ -38,12 +40,14 @@ for csv_path in csv_files:
                 new_val = (df.at[i - 1, "RT60 (s)"] + df.at[i + 1, "RT60 (s)"]) / 2
 
             # Log it
-            log_entries.append({
-                "file": csv_path,
-                "frequency": freq,
-                "original": rt60,
-                "replaced_with": new_val
-            })
+            log_entries.append(
+                {
+                    "file": csv_path,
+                    "frequency": freq,
+                    "original": rt60,
+                    "replaced_with": new_val,
+                }
+            )
 
             # Replace if not dry-run
             if not args.dry_run:
