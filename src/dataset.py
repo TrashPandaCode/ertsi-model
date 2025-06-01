@@ -8,18 +8,19 @@ import torch
 
 
 class ReverbRoomDataset(Dataset):
-    def __init__(self, data_root, transform=None, freqs=None, augment=True):
+    def __init__(self, data_root, transform=None, freqs=None, augment=True, image_size=448):
         self.entries = []
         self.freqs = freqs
         self.augment = augment
+        self.image_size = image_size
 
         base_transforms = [
-            T.Resize((256, 256)),
+            T.Resize((int(image_size * 1.15), int(image_size * 1.15))),  # Slightly larger for cropping
         ]
 
         if augment:
             base_transforms += [
-                T.RandomResizedCrop(224, scale=(0.8, 1.0)),
+                T.RandomResizedCrop(image_size, scale=(0.8, 1.0)),
                 T.RandomHorizontalFlip(p=0.5),
                 T.RandomRotation(degrees=5),
                 T.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.1, hue=0.02),
@@ -27,15 +28,15 @@ class ReverbRoomDataset(Dataset):
             ]
         else:
             base_transforms += [
-                T.CenterCrop(224),
+                T.CenterCrop(image_size),
             ]
 
         base_transforms += [
             T.ToTensor(),
-            T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+            T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
         ]
 
-        self.transform = transform or T.Compose(base_transforms)
+        self.transform = T.Compose(base_transforms)
 
         room_dirs = [
             d for d in glob.glob(os.path.join(data_root, "*")) if os.path.isdir(d)
