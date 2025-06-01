@@ -20,8 +20,8 @@ class ReverbCNN(pl.LightningModule):
         # Save hyperparameters for checkpointing
         self.save_hyperparameters()
 
-        # Use a more efficient backbone - try ResNet18 first
-        base = load_model.resnet18_places365()  # Lighter than ResNet50
+        # Use ResNet50 - corrected from the comment
+        base = load_model.resnet50_places365()
 
         # Extract features from the backbone (excluding classification layers)
         self.backbone = nn.Sequential(*list(base.children())[:-2])
@@ -29,10 +29,8 @@ class ReverbCNN(pl.LightningModule):
         # Global pooling to handle different input image sizes
         self.global_pool = nn.AdaptiveAvgPool2d((1, 1))
 
-
-        # Reduced feature dimensions for efficiency
-        backbone_features = 512  # ResNet18 has 512 features vs 2048 for ResNet50
-
+        # Correct feature dimensions for ResNet50
+        backbone_features = 2048  # ResNet50 has 2048 features, not 512
 
         # More efficient frequency-specific layers with depthwise separable convolutions
         self.freq_specific_layers = nn.ModuleList(
@@ -45,8 +43,8 @@ class ReverbCNN(pl.LightningModule):
                         groups=backbone_features,
                         padding=1,
                     ),
-                    nn.Conv2d(backbone_features, 128, kernel_size=1),
-                    nn.BatchNorm2d(128),
+                    nn.Conv2d(backbone_features, 256, kernel_size=1),  # Increased from 128
+                    nn.BatchNorm2d(256),
                     nn.ReLU(inplace=True),
                     nn.AdaptiveAvgPool2d((1, 1)),
                     nn.Flatten(),
@@ -55,25 +53,28 @@ class ReverbCNN(pl.LightningModule):
             ]
         )
 
-        # Optimized shared layers
+        # Optimized shared layers - adjusted for ResNet50
         self.shared_layers = nn.Sequential(
             nn.Flatten(),
-            nn.Linear(backbone_features, 256),
-            nn.BatchNorm1d(256),
+            nn.Linear(backbone_features, 512),  # Increased from 256
+            nn.BatchNorm1d(512),
             nn.ReLU(inplace=True),
-            nn.Dropout(0.2),  # Reduced dropout
-            nn.Linear(256, 128),
+            nn.Dropout(0.3),  # Slightly increased dropout for larger model
+            nn.Linear(512, 256),  # Increased from 128
             nn.ReLU(inplace=True),
-            nn.Dropout(0.1),
+            nn.Dropout(0.2),
         )
 
-        # Simplified prediction heads
+        # Simplified prediction heads - adjusted input size
         self.prediction_heads = nn.ModuleList(
             [
                 nn.Sequential(
                     nn.Linear(
-                        128 + 128, 64
-                    ),  # 128 from freq-specific + 128 from shared
+                        256 + 256, 128  # 256 from freq-specific + 256 from shared
+                    ),
+                    nn.ReLU(inplace=True),
+                    nn.Dropout(0.2),
+                    nn.Linear(128, 64),
                     nn.ReLU(inplace=True),
                     nn.Dropout(0.1),
                     nn.Linear(64, 1),
@@ -83,7 +84,10 @@ class ReverbCNN(pl.LightningModule):
         )
 
         # Use Huber loss for better robustness to outliers
-        self.loss_fn = nn.HuberLoss(delta=0.1)
+        self.loss_fn = nn.HuberLoss(delta=0.1, reduction='none')
+        
+        # Frequency weights for weighted loss
+        self.register_buffer('freq_weights', torch.tensor([1.0, 1.2, 1.5, 1.3, 1.1, 0.9]))
 
     def forward(self, x):
         # Extract features using the backbone
@@ -114,32 +118,69 @@ class ReverbCNN(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         inputs, targets = batch
         outputs = self(inputs)
-        loss = self.loss_fn(outputs, targets)
-
+        
+        # Compute frequency-weighted loss
+        losses = self.loss_fn(outputs, targets)
+        
+        # Apply frequency weights (expand to match batch size)
+        freq_weights = self.freq_weights[:outputs.size(1)].unsqueeze(0).expand_as(losses)
+        weighted_losses = losses * freq_weights
+        loss = weighted_losses.mean()
+        
+        # Calculate metrics
+        mae = torch.abs(outputs - targets).mean()
+        mse = torch.pow(outputs - targets, 2).mean()
+        rmse = torch.sqrt(mse)
+        
         # Log metrics
-        self.log("train_loss", loss, prog_bar=True)
-
-        # Log individual frequency band losses
-        for i in range(self.hparams.num_frequencies):
-            freq_loss = self.loss_fn(outputs[:, i : i + 1], targets[:, i : i + 1])
-            self.log(f"train_loss_freq_{i}", freq_loss, prog_bar=False)
+        self.log("train_loss", loss, on_step=True, on_epoch=True, prog_bar=True)
+        self.log("train_mae", mae, on_step=False, on_epoch=True, prog_bar=True)
+        self.log("train_rmse", rmse, on_step=False, on_epoch=True, prog_bar=False)
+        
+        # Log per-frequency metrics (less frequently to avoid clutter)
+        if batch_idx % 50 == 0:
+            for i in range(outputs.size(1)):
+                freq_mae = torch.abs(outputs[:, i] - targets[:, i]).mean()
+                freq_loss = losses[:, i].mean()
+                self.log(f"train_mae_freq_{i}", freq_mae, on_step=False, on_epoch=True)
+                self.log(f"train_loss_freq_{i}", freq_loss, on_step=False, on_epoch=True)
 
         return loss
 
     def validation_step(self, batch, batch_idx):
         inputs, targets = batch
         outputs = self(inputs)
-        loss = self.loss_fn(outputs, targets)
-
+        
+        # Compute frequency-weighted loss
+        losses = self.loss_fn(outputs, targets)
+        freq_weights = self.freq_weights[:outputs.size(1)].unsqueeze(0).expand_as(losses)
+        weighted_losses = losses * freq_weights
+        loss = weighted_losses.mean()
+        
+        # Calculate metrics
+        mae = torch.abs(outputs - targets).mean()
+        mse = torch.pow(outputs - targets, 2).mean()
+        rmse = torch.sqrt(mse)
+        
         # Log metrics
-        self.log("val_loss", loss, prog_bar=True)
-
-        # Log individual frequency band losses
-        for i in range(self.hparams.num_frequencies):
-            freq_loss = self.loss_fn(outputs[:, i : i + 1], targets[:, i : i + 1])
-            self.log(f"val_loss_freq_{i}", freq_loss, prog_bar=False)
-
-        return loss
+        self.log("val_loss", loss, on_step=False, on_epoch=True, prog_bar=True)
+        self.log("val_mae", mae, on_step=False, on_epoch=True, prog_bar=True)
+        self.log("val_rmse", rmse, on_step=False, on_epoch=True, prog_bar=False)
+        
+        # Log per-frequency validation metrics
+        for i in range(outputs.size(1)):
+            freq_mae = torch.abs(outputs[:, i] - targets[:, i]).mean()
+            freq_loss = losses[:, i].mean()
+            self.log(f"val_mae_freq_{i}", freq_mae, on_step=False, on_epoch=True)
+            self.log(f"val_loss_freq_{i}", freq_loss, on_step=False, on_epoch=True)
+        
+        return {
+            "val_loss": loss,
+            "val_mae": mae,
+            "val_rmse": rmse,
+            "outputs": outputs.detach(),
+            "targets": targets.detach()
+        }
 
     def configure_optimizers(self):
         # Use AdamW with improved parameters
