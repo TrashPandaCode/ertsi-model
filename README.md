@@ -1,8 +1,8 @@
 # TODO
 
 Experiments:
-- Adjust resulution (higher and lower)
-- Train real and synth rooms together
+- ~Adjust resulution (higher and lower)~
+- ~Train real and synth rooms together~
 - Different hyperparameters
 - Try different model architectures
 
