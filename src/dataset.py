@@ -32,7 +32,7 @@ class ReverbRoomDataset(Dataset):
 
         base_transforms += [
             T.ToTensor(),
-            T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+            T.Normalize(mean=[0.3942, 0.3814, 0.3651], std=[0.1533, 0.1538, 0.1556]),
         ]
 
         self.transform = transform or T.Compose(base_transforms)

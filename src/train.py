@@ -77,11 +77,15 @@ def train():
     logger_synth = TensorBoardLogger("logs", name="reverbcnn_synth")
 
     trainer_synth = pl.Trainer(
+        precision=16,
         max_epochs=params["synth_epochs"],
         accelerator="auto",  # Automatically use GPU if available
+        accumulate_grad_batches=1,
         callbacks=[checkpoint_callback_synth, early_stop_callback_synth],
         logger=logger_synth,
         log_every_n_steps=10,
+        deterministic=True,              # Ensures reproducibility
+        benchmark=True                   # Speeds up if input sizes are constant
     )
 
     trainer_synth.fit(model, synth_train_loader, synth_val_loader)
@@ -110,11 +114,15 @@ def train():
     logger_real = TensorBoardLogger("logs", name="reverbcnn_real_finetune")
 
     trainer_real = pl.Trainer(
+        precision=16,
         max_epochs=params["real_epochs"],
         accelerator="auto",
+        accumulate_grad_batches=1,
         callbacks=[checkpoint_callback_real, early_stop_callback_real],
         logger=logger_real,
         log_every_n_steps=5,
+        deterministic=True,              # Ensures reproducibility
+        benchmark=True                   # Speeds up if input sizes are constant
     )
 
     trainer_real.fit(model, real_train_loader, real_val_loader)

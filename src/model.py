@@ -14,84 +14,76 @@ class ReverbCNN(pl.LightningModule):
     def __init__(self, num_frequencies=6, learning_rate=0.001):
         super().__init__()
 
-        # Save hyperparameters for checkpointing
         self.save_hyperparameters()
-
-        # Use a pretrained model from Places365 (captures spatial/room features better than ImageNet)
-        base = load_model.resnet50_places365()
-
-        # Extract features from the backbone (excluding classification layers)
-        self.backbone = nn.Sequential(*list(base.children())[:-2])
-
-        # Global pooling to handle different input image sizes
-        self.global_pool = nn.AdaptiveAvgPool2d((1, 1))
-
-        # Frequency-aware feature extraction
-        # This creates parallel pathways for each frequency band
-        self.freq_specific_layers = nn.ModuleList(
-            [
-                nn.Sequential(
-                    nn.Conv2d(2048, 256, kernel_size=1),
-                    nn.ReLU(),
-                    nn.AdaptiveAvgPool2d((1, 1)),
-                    nn.Flatten(),
-                )
-                for _ in range(num_frequencies)
-            ]
-        )
-
-        # Shared layers to extract common room acoustic features
-        self.shared_layers = nn.Sequential(
-            nn.Flatten(),
-            nn.Linear(2048, 512),
-            nn.ReLU(),
-            nn.Dropout(0.3),
-            nn.Linear(512, 256),
-            nn.ReLU(),
-            nn.Dropout(0.2),
-        )
-
-        # Final prediction heads - one for each frequency band
-        self.prediction_heads = nn.ModuleList(
-            [
-                nn.Sequential(
-                    nn.Linear(
-                        256 + 256, 128
-                    ),  # 256 from freq-specific + 256 from shared
-                    nn.ReLU(),
-                    nn.Dropout(0.2),
-                    nn.Linear(128, 1),
-                )
-                for _ in range(num_frequencies)
-            ]
-        )
-
         self.loss_fn = nn.MSELoss()
 
+        def conv_block(in_ch, out_ch):
+            return nn.Sequential(
+                nn.Conv2d(in_ch, out_ch, 3, padding=1),
+                nn.BatchNorm2d(out_ch),
+                nn.ReLU(inplace=True),
+                nn.Conv2d(out_ch, out_ch, 3, padding=1),
+                nn.BatchNorm2d(out_ch),
+                nn.ReLU(inplace=True)
+            )
+
+        def up_block(in_ch, out_ch):
+            return conv_block(in_ch, out_ch)
+
+        # Downsampling path
+        self.enc1 = conv_block(3, 64)
+        self.pool1 = nn.MaxPool2d(2)
+
+        self.enc2 = conv_block(64, 128)
+        self.pool2 = nn.MaxPool2d(2)
+
+        self.enc3 = conv_block(128, 256)
+        self.pool3 = nn.MaxPool2d(2)
+
+        self.enc4 = conv_block(256, 512)
+        self.pool4 = nn.MaxPool2d(2)
+
+        self.bottleneck = conv_block(512, 1024)
+
+        # Upsampling path
+        self.up4 = up_block(1024 + 512, 512)  # 1536 -> 512
+        self.up3 = up_block(512 + 256, 256)   # 768 -> 256
+        self.up2 = up_block(256 + 128, 128)   # 384 -> 128
+        self.up1 = up_block(128 + 64, 64)     # 192 -> 64
+
+        # Final conv to reduce to single-channel feature map
+        self.final_conv = nn.Conv2d(64, 32, kernel_size=1)
+
+        # Global Average Pooling -> FC for regression
+        self.global_pool = nn.AdaptiveAvgPool2d((1, 1))
+        self.fc = nn.Linear(32, num_frequencies)
+
     def forward(self, x):
-        # Extract features using the backbone
-        features = self.backbone(x)
+        # Down
+        e1 = self.enc1(x)
+        e2 = self.enc2(self.pool1(e1))
+        e3 = self.enc3(self.pool2(e2))
+        e4 = self.enc4(self.pool3(e3))
+        b = self.bottleneck(self.pool4(e4))
 
-        # Compute shared features
-        pooled_features = self.global_pool(features)
-        shared_features = self.shared_layers(pooled_features)
+        # Up
+        b_up = nn.functional.interpolate(b, scale_factor=2, mode='bilinear', align_corners=True)
+        d4 = self.up4(torch.cat([b_up, e4], dim=1))
 
-        # Process through frequency-specific pathways
-        freq_features = [
-            freq_layer(features) for freq_layer in self.freq_specific_layers
-        ]
+        d4_up = nn.functional.interpolate(d4, scale_factor=2, mode='bilinear', align_corners=True)
+        d3 = self.up3(torch.cat([d4_up, e3], dim=1))
 
-        # Make predictions for each frequency
-        outputs = []
-        for i, pred_head in enumerate(self.prediction_heads):
-            # Concatenate shared features with frequency-specific features
-            combined = torch.cat([shared_features, freq_features[i]], dim=1)
-            # Predict RT60 for this frequency band
-            rt60 = pred_head(combined)
-            outputs.append(rt60)
+        d3_up = nn.functional.interpolate(d3, scale_factor=2, mode='bilinear', align_corners=True)
+        d2 = self.up2(torch.cat([d3_up, e2], dim=1))
 
-        # Stack predictions into a single tensor [batch_size, num_frequencies]
-        return torch.cat(outputs, dim=1)
+        d2_up = nn.functional.interpolate(d2, scale_factor=2, mode='bilinear', align_corners=True)
+        d1 = self.up1(torch.cat([d2_up, e1], dim=1))
+
+        f = self.final_conv(d1)
+        pooled = self.global_pool(f).squeeze(-1).squeeze(-1)  # (batch, 32)
+        out = self.fc(pooled)  # (batch, 6)
+
+        return out
 
     def training_step(self, batch, batch_idx):
         inputs, targets = batch
