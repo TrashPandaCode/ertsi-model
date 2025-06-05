@@ -18,7 +18,6 @@ def evaluate(
     model_path="output/reverbcnn_simultaneous.pt",
     data_dir="data/test/real",
     batch_size=32,
-    image_size=224,
     num_mc_samples=20,
     model_type="simultaneous"
 ):
@@ -29,7 +28,6 @@ def evaluate(
         model_path: Path to the trained model
         data_dir: Directory containing test data
         batch_size: Batch size for evaluation
-        image_size: Image resolution for evaluation
         num_mc_samples: Number of Monte Carlo dropout samples
         model_type: Type of model ('simultaneous', 'progressive', 'balanced')
     """
@@ -44,7 +42,6 @@ def evaluate(
     print(f"Model path: {model_path}")
     print(f"Data directory: {data_dir}")
     print(f"Device: {device}")
-    print(f"Image resolution: {image_size}x{image_size}")
     print(f"MC samples for uncertainty: {num_mc_samples}")
     
     # Create dataset
@@ -52,7 +49,6 @@ def evaluate(
         data_dir, 
         freqs=freqs, 
         augment=False,
-        image_size=image_size
     )
     
     if len(dataset) == 0:
@@ -125,11 +121,11 @@ def evaluate(
     # Create visualizations
     print("\n=== Generating Visualizations ===")
     create_evaluation_plots(
-        all_preds, all_targets, mc_means, mc_stds, freqs, model_type, image_size
+        all_preds, all_targets, mc_means, mc_stds, freqs, model_type
     )
     
     # Save comprehensive results
-    save_evaluation_results(metrics, model_path, model_type, image_size, len(all_preds))
+    save_evaluation_results(metrics, model_path, model_type, len(all_preds))
     
     # Print summary
     print_evaluation_summary(metrics, model_type)
@@ -240,7 +236,7 @@ def perform_mc_dropout_evaluation(model, dataloader, device, num_mc_samples):
     return mc_means, mc_stds
 
 
-def create_evaluation_plots(all_preds, all_targets, mc_means, mc_stds, freqs, model_type, image_size):
+def create_evaluation_plots(all_preds, all_targets, mc_means, mc_stds, freqs, model_type):
     """Create comprehensive evaluation plots"""
     
     # Ensure output directory exists
@@ -284,7 +280,7 @@ def create_evaluation_plots(all_preds, all_targets, mc_means, mc_stds, freqs, mo
         plt.grid(True, alpha=0.3)
         plt.legend()
     
-    plt.suptitle(f"{model_type.title()} Model Evaluation - Resolution: {image_size}x{image_size}", 
+    plt.suptitle(f"{model_type.title()} Model Evaluation", 
                  fontsize=18, fontweight='bold')
     plt.tight_layout()
     plt.savefig(output_dir / f"{model_type}_predictions_vs_truth.png", dpi=150, bbox_inches='tight')
@@ -429,7 +425,7 @@ def create_evaluation_plots(all_preds, all_targets, mc_means, mc_stds, freqs, mo
     print("✅ All visualizations saved successfully")
 
 
-def save_evaluation_results(metrics, model_path, model_type, image_size, num_samples):
+def save_evaluation_results(metrics, model_path, model_type, num_samples):
     """Save comprehensive evaluation results"""
     
     output_dir = Path("evaluation")
@@ -439,7 +435,6 @@ def save_evaluation_results(metrics, model_path, model_type, image_size, num_sam
     metrics["model_info"].update({
         "model_path": str(model_path),
         "model_type": model_type,
-        "image_resolution": f"{image_size}x{image_size}",
         "evaluation_samples": num_samples
     })
     
@@ -522,8 +517,6 @@ if __name__ == "__main__":
                        help="Test data directory")
     parser.add_argument("--batch_size", type=int, default=32,
                        help="Batch size for evaluation")
-    parser.add_argument("--image_size", type=int, default=224,
-                       help="Image resolution for evaluation")
     parser.add_argument("--mc_samples", type=int, default=20,
                        help="Number of MC dropout samples")
     parser.add_argument("--model_type", default="simultaneous",
@@ -536,7 +529,6 @@ if __name__ == "__main__":
         model_path=args.model_path,
         data_dir=args.data_dir,
         batch_size=args.batch_size,
-        image_size=args.image_size,
         num_mc_samples=args.mc_samples,
         model_type=args.model_type
     )
