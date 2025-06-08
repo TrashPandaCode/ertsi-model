@@ -45,17 +45,17 @@ def train():
     print(f"Real validation set: {len(real_val)} samples")
 
     synth_train_loader = DataLoader(
-        synth_train, batch_size=params["batch_size"], shuffle=True, num_workers=4
+        synth_train, batch_size=params["batch_size"], shuffle=True, num_workers=2
     )
     synth_val_loader = DataLoader(
-        synth_val, batch_size=params["batch_size"], shuffle=False, num_workers=4
+        synth_val, batch_size=params["batch_size"], shuffle=False, num_workers=2
     )
 
     real_train_loader = DataLoader(
-        real_train, batch_size=params["batch_size"], shuffle=True, num_workers=4
+        real_train, batch_size=params["batch_size"], shuffle=True, num_workers=2
     )
     real_val_loader = DataLoader(
-        real_val, batch_size=params["batch_size"], shuffle=False, num_workers=4
+        real_val, batch_size=params["batch_size"], shuffle=False, num_workers=2
     )
 
     print("\n=== STAGE 1: Training on synthetic data ===")
@@ -88,7 +88,7 @@ def train():
 
     # Save the model after synthetic training
     torch.save(model.state_dict(), params["synth_model_out"])
-    print(f"Synthetic model saved to {params["synth_model_out"]}")
+    print(f"Synthetic model saved to {params['synth_model_out']}")
 
     print("\n=== STAGE 2: Fine-tuning on real data ===")
 
