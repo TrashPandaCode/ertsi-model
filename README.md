@@ -1,9 +1,8 @@
 # TODO
 
-Experiments:
-exV1: synth train only on hybrid rooms
-exV2: synth train only on non-hybrid rooms
-exV3: synth train on hybrid and non-hybrid rooms
+- try different transformer models
+	- Swin Transformer
+ 	- Vision Transformer (ViT)
 
 ```
 data
