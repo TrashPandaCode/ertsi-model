@@ -26,19 +26,43 @@ class ReverbCNN(pl.LightningModule):
         # Global pooling to handle different input image sizes
         self.global_pool = nn.AdaptiveAvgPool2d((1, 1))
 
+        # Add frequency weights as a buffer
+        freq_weights = torch.tensor([2.0, 1.5, 1.0, 0.8, 0.6, 0.4])
+        self.register_buffer('freq_weights', freq_weights)
+
+        # Add spatial attention (after backbone definition)
+        self.attention = nn.Sequential(
+            nn.Conv2d(2048, 1, 1),
+            nn.Sigmoid()
+        )
+
+        # Add batch norm to freq_specific_layers
+        self.freq_specific_layers = nn.ModuleList([
+            nn.Sequential(
+                nn.Conv2d(2048, 256, kernel_size=1),
+                nn.BatchNorm2d(256),  # Add this
+                nn.ReLU(),
+                nn.AdaptiveAvgPool2d((1, 1)),
+                nn.Flatten(),
+            )
+            for _ in range(num_frequencies)
+        ])
+
+
+
         # Frequency-aware feature extraction
         # This creates parallel pathways for each frequency band
-        self.freq_specific_layers = nn.ModuleList(
-            [
-                nn.Sequential(
-                    nn.Conv2d(2048, 256, kernel_size=1),
-                    nn.ReLU(),
-                    nn.AdaptiveAvgPool2d((1, 1)),
-                    nn.Flatten(),
-                )
-                for _ in range(num_frequencies)
-            ]
-        )
+        # self.freq_specific_layers = nn.ModuleList(
+        #     [
+        #         nn.Sequential(
+        #             nn.Conv2d(2048, 256, kernel_size=1),
+        #             nn.ReLU(),
+        #             nn.AdaptiveAvgPool2d((1, 1)),
+        #             nn.Flatten(),
+        #         )
+        #         for _ in range(num_frequencies)
+        #     ]
+        # )
 
         # Shared layers to extract common room acoustic features
         self.shared_layers = nn.Sequential(
