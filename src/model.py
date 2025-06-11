@@ -17,62 +17,50 @@ class ReverbCNN(pl.LightningModule):
         # Save hyperparameters for checkpointing
         self.save_hyperparameters()
 
+        # Add frequency weights as a buffer
+        freq_weights = torch.tensor([2.0, 1.5, 1.0, 0.8, 0.6, 0.4])
+        self.register_buffer('freq_weights', freq_weights)
+
         # Use a pretrained model from Places365 (captures spatial/room features better than ImageNet)
         base = load_model.resnet50_places365()
 
         # Extract features from the backbone (excluding classification layers)
         self.backbone = nn.Sequential(*list(base.children())[:-2])
 
-        # Global pooling to handle different input image sizes
-        self.global_pool = nn.AdaptiveAvgPool2d((1, 1))
-
-        # Add frequency weights as a buffer
-        freq_weights = torch.tensor([2.0, 1.5, 1.0, 0.8, 0.6, 0.4])
-        self.register_buffer('freq_weights', freq_weights)
-
-        # Add spatial attention (after backbone definition)
+        # Add spatial attention
         self.attention = nn.Sequential(
             nn.Conv2d(2048, 1, 1),
             nn.Sigmoid()
         )
 
-        # Add batch norm to freq_specific_layers
-        self.freq_specific_layers = nn.ModuleList([
-            nn.Sequential(
-                nn.Conv2d(2048, 256, kernel_size=1),
-                nn.BatchNorm2d(256),  # Add this
-                nn.ReLU(),
-                nn.AdaptiveAvgPool2d((1, 1)),
-                nn.Flatten(),
-            )
-            for _ in range(num_frequencies)
-        ])
+        # Global pooling to handle different input image sizes
+        self.global_pool = nn.AdaptiveAvgPool2d((1, 1))
 
-
-
-        # Frequency-aware feature extraction
-        # This creates parallel pathways for each frequency band
-        # self.freq_specific_layers = nn.ModuleList(
-        #     [
-        #         nn.Sequential(
-        #             nn.Conv2d(2048, 256, kernel_size=1),
-        #             nn.ReLU(),
-        #             nn.AdaptiveAvgPool2d((1, 1)),
-        #             nn.Flatten(),
-        #         )
-        #         for _ in range(num_frequencies)
-        #     ]
-        # )
+        # Frequency-aware feature extraction with batch normalization
+        self.freq_specific_layers = nn.ModuleList(
+            [
+                nn.Sequential(
+                    nn.Conv2d(2048, 256, kernel_size=1),
+                    nn.BatchNorm2d(256),
+                    nn.ReLU(),
+                    nn.AdaptiveAvgPool2d((1, 1)),
+                    nn.Flatten(),
+                )
+                for _ in range(num_frequencies)
+            ]
+        )
 
         # Shared layers to extract common room acoustic features
         self.shared_layers = nn.Sequential(
             nn.Flatten(),
             nn.Linear(2048, 512),
+            nn.BatchNorm1d(512),
             nn.ReLU(),
-            nn.Dropout(0.3),
+            nn.Dropout(0.4),  # Increased dropout
             nn.Linear(512, 256),
+            nn.BatchNorm1d(256),
             nn.ReLU(),
-            nn.Dropout(0.2),
+            nn.Dropout(0.3),  # Increased dropout
         )
 
         # Final prediction heads - one for each frequency band
@@ -82,8 +70,9 @@ class ReverbCNN(pl.LightningModule):
                     nn.Linear(
                         256 + 256, 128
                     ),  # 256 from freq-specific + 256 from shared
+                    nn.BatchNorm1d(128),
                     nn.ReLU(),
-                    nn.Dropout(0.2),
+                    nn.Dropout(0.3),  # Increased dropout
                     nn.Linear(128, 1),
                 )
                 for _ in range(num_frequencies)
@@ -95,6 +84,10 @@ class ReverbCNN(pl.LightningModule):
     def forward(self, x):
         # Extract features using the backbone
         features = self.backbone(x)
+
+        # Apply spatial attention
+        attention_weights = self.attention(features)
+        features = features * attention_weights
 
         # Compute shared features
         pooled_features = self.global_pool(features)
@@ -120,10 +113,18 @@ class ReverbCNN(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         inputs, targets = batch
         outputs = self(inputs)
-        loss = self.loss_fn(outputs, targets)
+
+        # Frequency-weighted loss
+        mse_loss = torch.mean((outputs - targets)**2, dim=0)
+        weighted_loss = torch.mean(self.freq_weights * mse_loss)
+
+        # Add L1 regularization
+        l1_loss = sum(torch.sum(torch.abs(param)) for param in self.parameters())
+        loss = weighted_loss + 1e-5 * l1_loss
 
         # Log metrics
         self.log("train_loss", loss, prog_bar=True)
+        self.log("train_weighted_loss", weighted_loss, prog_bar=False)
 
         # Log individual frequency band losses
         for i in range(self.hparams.num_frequencies):
@@ -135,10 +136,15 @@ class ReverbCNN(pl.LightningModule):
     def validation_step(self, batch, batch_idx):
         inputs, targets = batch
         outputs = self(inputs)
-        loss = self.loss_fn(outputs, targets)
+
+        # Frequency-weighted loss
+        mse_loss = torch.mean((outputs - targets)**2, dim=0)
+        weighted_loss = torch.mean(self.freq_weights * mse_loss)
+        loss = weighted_loss
 
         # Log metrics
         self.log("val_loss", loss, prog_bar=True)
+        self.log("val_weighted_loss", weighted_loss, prog_bar=False)
 
         # Log individual frequency band losses
         for i in range(self.hparams.num_frequencies):
@@ -153,18 +159,21 @@ class ReverbCNN(pl.LightningModule):
             self.parameters(), lr=self.hparams.learning_rate, weight_decay=1e-4
         )
 
-        # Learning rate scheduler
-        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        # Warmup + ReduceLROnPlateau scheduler
+        warmup_scheduler = torch.optim.lr_scheduler.LinearLR(
+            optimizer, start_factor=0.1, total_iters=5
+        )
+        plateau_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
             optimizer,
             mode="min",
             factor=0.5,
-            patience=2,
+            patience=3,
         )
 
         return {
             "optimizer": optimizer,
             "lr_scheduler": {
-                "scheduler": scheduler,
+                "scheduler": plateau_scheduler,
                 "monitor": "val_loss",
                 "interval": "epoch",
                 "frequency": 1,

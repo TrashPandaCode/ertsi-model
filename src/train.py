@@ -76,9 +76,11 @@ def train():
 
     logger_synth = TensorBoardLogger("logs", name="reverbcnn_synth")
 
+    # In train.py, add to trainer configuration:
     trainer_synth = pl.Trainer(
         max_epochs=params["synth_epochs"],
-        accelerator="auto",  # Automatically use GPU if available
+        accelerator="auto",
+        gradient_clip_val=1.0,  # Add this line
         callbacks=[checkpoint_callback_synth, early_stop_callback_synth],
         logger=logger_synth,
         log_every_n_steps=10,
