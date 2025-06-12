@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 import seaborn as sns
 import pandas as pd
-
+from simple_model import SimpleReverbCNN
 from improved_model import ImprovedReverbCNN
 from seed import set_seeds
 
@@ -31,10 +31,10 @@ def evaluate(
         dataset, batch_size=batch_size, shuffle=False, num_workers=4
     )
 
-    model = ImprovedReverbCNN(num_frequencies=len(freqs))
-    model.load_state_dict(torch.load(model_path, map_location=device))
-    model.to(device)
+    model = SimpleReverbCNN.load_from_checkpoint("output/simple_reverbcnn.ckpt")
     model.eval()
+    model.freeze()
+    model.to(device)
 
     # Initialize variables to store predictions and targets
     all_preds = []
@@ -102,12 +102,12 @@ def evaluate(
         print(f"MAE: {freq_metrics['mae']:.4f}")
         print(f"R²: {freq_metrics['r2']:.4f}")
 
-    os.makedirs("evaluation", exist_ok=True)
+    os.makedirs("evaluation_simple", exist_ok=True)
 
-    with open("evaluation/metrics.json", "w") as f:
+    with open("evaluation_simple/metrics.json", "w") as f:
         json.dump(metrics, f, indent=4)
 
-    os.makedirs("evaluation/plots", exist_ok=True)
+    os.makedirs("evaluation_simple/plots", exist_ok=True)
 
     # Plot predictions vs ground truth for each frequency
     plt.figure(figsize=(15, 10))
@@ -136,7 +136,7 @@ def evaluate(
         )
 
     plt.tight_layout()
-    plt.savefig("evaluation/plots/predictions_vs_truth.png")
+    plt.savefig("evaluation_simple/plots/predictions_vs_truth.png")
 
     # Plot error distribution for each frequency
     plt.figure(figsize=(15, 10))
@@ -165,7 +165,7 @@ def evaluate(
         plt.legend()
 
     plt.tight_layout()
-    plt.savefig("evaluation/plots/error_distribution.png")
+    plt.savefig("evaluation_simple/plots/error_distribution.png")
 
     # Plot RT60 by frequency for a few random examples
     num_examples = min(5, len(all_targets))
@@ -184,65 +184,7 @@ def evaluate(
     plt.grid(True)
     plt.legend()
     plt.tight_layout()
-    plt.savefig("evaluation/plots/frequency_examples.png")
-
-    # ---------------------------
-    # MONTE CARLO DROPOUT INFERENCE
-    # ---------------------------
-    print("\nPerforming MC Dropout inference for uncertainty estimation...")
-    model.enable_dropout()
-    num_mc_samples = 20
-
-    mc_preds = []
-    with torch.no_grad():
-        for _ in range(num_mc_samples):
-            preds_batch = []
-            for inputs, _ in dataloader:
-                inputs = inputs.to(device)
-                outputs = model(inputs)
-                preds_batch.append(outputs.cpu().numpy())
-            mc_preds.append(np.concatenate(preds_batch, axis=0))
-
-    mc_preds = np.stack(
-        mc_preds, axis=0
-    )  # Shape: [num_mc_samples, num_examples, num_freqs]
-    mc_means = mc_preds.mean(axis=0)  # Shape: [num_examples, num_freqs]
-    mc_stds = mc_preds.std(axis=0)  # Shape: [num_examples, num_freqs]
-
-    # Plot Uncertainty Distribution for each frequency
-    plt.figure(figsize=(15, 10))
-    for i, freq in enumerate(freqs):
-        plt.subplot(2, 3, i + 1)
-        plt.hist(mc_stds[:, i], bins=30, alpha=0.7)
-        plt.title(f"Uncertainty (STD) at {freq} Hz")
-        plt.xlabel("Prediction Std Dev (seconds)")
-        plt.ylabel("Count")
-    plt.tight_layout()
-    plt.savefig("evaluation/plots/uncertainty_distribution.png")
-
-    # Plot MC mean ± std vs ground truth
-    plt.figure(figsize=(15, 10))
-    for i, freq in enumerate(freqs):
-        plt.subplot(2, 3, i + 1)
-        plt.errorbar(
-            all_targets[:, i],
-            mc_means[:, i],
-            yerr=mc_stds[:, i],
-            fmt="o",
-            alpha=0.4,
-            ecolor="gray",
-            capsize=2,
-        )
-        plt.plot(
-            [all_targets[:, i].min(), all_targets[:, i].max()],
-            [all_targets[:, i].min(), all_targets[:, i].max()],
-            "r--",
-        )
-        plt.title(f"Prediction ± Uncertainty: {freq} Hz")
-        plt.xlabel("Ground Truth")
-        plt.ylabel("Prediction")
-    plt.tight_layout()
-    plt.savefig("evaluation/plots/prediction_with_uncertainty.png")
+    plt.savefig("evaluation_simple/plots/frequency_examples.png")
 
     # ---------------------------
     # Continuous Error Heatmap
@@ -277,7 +219,7 @@ def evaluate(
         plt.legend()
 
     plt.tight_layout()
-    plt.savefig("evaluation/plots/rt60_heatmap_density.png")
+    plt.savefig("evaluation_simple/plots/rt60_heatmap_density.png")
 
     plt.figure(figsize=(15, 10))
     for i, freq in enumerate(freqs):
@@ -309,7 +251,7 @@ def evaluate(
         plt.legend()
 
     plt.tight_layout()
-    plt.savefig("evaluation/plots/rt60_kde_heatmap.png")
+    plt.savefig("evaluation_simple/plots/rt60_kde_heatmap.png")
 
     print(f"\nEvaluation complete. Results saved to 'evaluation/' directory.")
     return metrics
