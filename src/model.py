@@ -15,16 +15,18 @@ class ReverbCNN(pl.LightningModule):
         super().__init__()
 
         self.save_hyperparameters()
-        self.loss_fn = nn.MSELoss()
+        self.loss_fn = nn.HuberLoss(delta=1.0)
 
         def conv_block(in_ch, out_ch):
             return nn.Sequential(
                 nn.Conv2d(in_ch, out_ch, 3, padding=1),
                 nn.BatchNorm2d(out_ch),
                 nn.ReLU(inplace=True),
+                nn.Dropout2d(0.2),
                 nn.Conv2d(out_ch, out_ch, 3, padding=1),
                 nn.BatchNorm2d(out_ch),
-                nn.ReLU(inplace=True)
+                nn.ReLU(inplace=True),
+                nn.Dropout2d(0.2)
             )
 
         def up_block(in_ch, out_ch):
@@ -43,10 +45,10 @@ class ReverbCNN(pl.LightningModule):
         self.enc4 = conv_block(256, 512)
         self.pool4 = nn.MaxPool2d(2)
 
-        self.bottleneck = conv_block(512, 1024)
+        self.bottleneck = conv_block(512, 512)
 
         # Upsampling path
-        self.up4 = up_block(1024 + 512, 512)  # 1536 -> 512
+        self.up4 = up_block(1024, 512)
         self.up3 = up_block(512 + 256, 256)   # 768 -> 256
         self.up2 = up_block(256 + 128, 128)   # 384 -> 128
         self.up1 = up_block(128 + 64, 64)     # 192 -> 64
@@ -118,7 +120,7 @@ class ReverbCNN(pl.LightningModule):
     def configure_optimizers(self):
         # Use AdamW which handles weight decay better
         optimizer = torch.optim.AdamW(
-            self.parameters(), lr=self.hparams.learning_rate, weight_decay=1e-4
+            self.parameters(), lr=self.hparams.learning_rate, weight_decay=1e-3
         )
 
         # Learning rate scheduler

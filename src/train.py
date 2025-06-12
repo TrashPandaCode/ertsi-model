@@ -71,7 +71,7 @@ def train():
     )
 
     early_stop_callback_synth = EarlyStopping(
-        monitor="val_loss", patience=5, mode="min"
+        monitor="val_loss", patience=25, mode="min"
     )
 
     logger_synth = TensorBoardLogger("logs", name="reverbcnn_synth")
@@ -90,8 +90,18 @@ def train():
 
     trainer_synth.fit(model, synth_train_loader, synth_val_loader)
 
-    # Save the model after synthetic training
+    # Load the best checkpoint from training
+    best_synth_model_path = checkpoint_callback_synth.best_model_path
+    print(f"Best synthetic model checkpoint: {best_synth_model_path}")
+
+    # Load the model from the best checkpoint
+    model = ReverbCNN.load_from_checkpoint(best_synth_model_path)
+
+    # Save it separately for convenience if desired
     torch.save(model.state_dict(), params["synth_model_out"])
+
+    # Save the model after synthetic training
+    #torch.save(model.state_dict(), params["synth_model_out"])
     print(f"Synthetic model saved to {params["synth_model_out"]}")
 
     print("\n=== STAGE 2: Fine-tuning on real data ===")
@@ -108,7 +118,7 @@ def train():
     )
 
     early_stop_callback_real = EarlyStopping(
-        monitor="val_loss", patience=10, mode="min"  # More patience for fine-tuning
+        monitor="val_loss", patience=15, mode="min"  # More patience for fine-tuning
     )
 
     logger_real = TensorBoardLogger("logs", name="reverbcnn_real_finetune")
