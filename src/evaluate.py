@@ -1,5 +1,5 @@
 from dataset import ReverbRoomDataset
-from model import ReverbCNN
+from model_real import ReverbCNN
 from torch.utils.data import DataLoader
 import torch
 import numpy as np

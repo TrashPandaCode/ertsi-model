@@ -68,6 +68,17 @@ class ReverbCNN(pl.LightningModule):
 
         self.loss_fn = nn.MSELoss()
 
+    def extract_features(self, x):
+        """Extract shared features for visualization/analysis"""
+        # Extract features using the backbone
+        features = self.backbone(x)
+        
+        # Compute shared features
+        pooled_features = self.global_pool(features)
+        shared_features = self.shared_layers(pooled_features)
+        
+        return shared_features
+
     def forward(self, x):
         # Extract features using the backbone
         features = self.backbone(x)
