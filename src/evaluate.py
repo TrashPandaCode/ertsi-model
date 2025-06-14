@@ -10,6 +10,7 @@ from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 import seaborn as sns
 import pandas as pd
 from simple_model import SimpleReverbCNN
+from complex_non_pre_model import AdvancedReverbCNN
 from improved_model import ImprovedReverbCNN
 from seed import set_seeds
 
@@ -31,7 +32,10 @@ def evaluate(
         dataset, batch_size=batch_size, shuffle=False, num_workers=4
     )
 
-    model = SimpleReverbCNN.load_from_checkpoint("output/simple_reverbcnn.ckpt")
+    # model = SimpleReverbCNN.load_from_checkpoint("output/simple_reverbcnn.ckpt")
+    model = AdvancedReverbCNN.load_from_checkpoint(
+        "output/advanced_reverbcnn_final.ckpt"
+    )
     model.eval()
     model.freeze()
     model.to(device)
@@ -102,12 +106,12 @@ def evaluate(
         print(f"MAE: {freq_metrics['mae']:.4f}")
         print(f"R²: {freq_metrics['r2']:.4f}")
 
-    os.makedirs("evaluation_simple", exist_ok=True)
+    os.makedirs("evaluation_complex", exist_ok=True)
 
-    with open("evaluation_simple/metrics.json", "w") as f:
+    with open("evaluation_complex/metrics.json", "w") as f:
         json.dump(metrics, f, indent=4)
 
-    os.makedirs("evaluation_simple/plots", exist_ok=True)
+    os.makedirs("evaluation_complex/plots", exist_ok=True)
 
     # Plot predictions vs ground truth for each frequency
     plt.figure(figsize=(15, 10))
@@ -136,7 +140,7 @@ def evaluate(
         )
 
     plt.tight_layout()
-    plt.savefig("evaluation_simple/plots/predictions_vs_truth.png")
+    plt.savefig("evaluation_complex/plots/predictions_vs_truth.png")
 
     # Plot error distribution for each frequency
     plt.figure(figsize=(15, 10))
@@ -165,7 +169,7 @@ def evaluate(
         plt.legend()
 
     plt.tight_layout()
-    plt.savefig("evaluation_simple/plots/error_distribution.png")
+    plt.savefig("evaluation_complex/plots/error_distribution.png")
 
     # Plot RT60 by frequency for a few random examples
     num_examples = min(5, len(all_targets))
@@ -184,7 +188,7 @@ def evaluate(
     plt.grid(True)
     plt.legend()
     plt.tight_layout()
-    plt.savefig("evaluation_simple/plots/frequency_examples.png")
+    plt.savefig("evaluation_complex/plots/frequency_examples.png")
 
     # ---------------------------
     # Continuous Error Heatmap
@@ -219,7 +223,7 @@ def evaluate(
         plt.legend()
 
     plt.tight_layout()
-    plt.savefig("evaluation_simple/plots/rt60_heatmap_density.png")
+    plt.savefig("evaluation_complex/plots/rt60_heatmap_density.png")
 
     plt.figure(figsize=(15, 10))
     for i, freq in enumerate(freqs):
@@ -251,7 +255,7 @@ def evaluate(
         plt.legend()
 
     plt.tight_layout()
-    plt.savefig("evaluation_simple/plots/rt60_kde_heatmap.png")
+    plt.savefig("evaluation_complex/plots/rt60_kde_heatmap.png")
 
     print(f"\nEvaluation complete. Results saved to 'evaluation/' directory.")
     return metrics

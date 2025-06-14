@@ -6,10 +6,11 @@ from sklearn.manifold import TSNE
 import numpy as np
 from model_flex import ReverbCNN
 from simple_model import SimpleReverbCNN
+from complex_non_pre_model import AdvancedReverbCNN
 from dataset import ReverbRoomDataset
 
 # Settings
-DATASET_DIR = "data/train/synth/hybrid/"  # or "synth"
+DATASET_DIR = "data/train/real"  # or "synth"
 MODEL_PATH = "output/comparison-reverbcnn_resnet50_places365.pt"
 FREQS = [250, 500, 1000, 2000, 4000, 8000]
 USE_TSNE = True  # Set False to use PCA
@@ -22,7 +23,7 @@ loader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=False)
 # Load model
 # model = ReverbCNN(num_frequencies=len(FREQS), backbone="resnet50_places365")
 # model.load_state_dict(torch.load(MODEL_PATH))
-model = SimpleReverbCNN.load_from_checkpoint("output/simple_reverbcnn.ckpt")
+model = AdvancedReverbCNN.load_from_checkpoint("output/advanced_reverbcnn_final.ckpt")
 model.eval()
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
