@@ -10,50 +10,74 @@ class ReverbCNN(pl.LightningModule):
             if isinstance(m, torch.nn.Dropout):
                 m.train()
 
-    def __init__(self, num_frequencies=6, learning_rate=0.001):
+    def __init__(self, num_frequencies=6, learning_rate=0.001, freeze_backbone=False, freeze_first_layers=False):
         super().__init__()
         
         # Save hyperparameters for checkpointing
         self.save_hyperparameters()
         
-        # Use a pretrained model from Places365 (captures spatial/room features better than ImageNet)
+        # Use a pretrained model from Places365
         base = load_model.resnet50_places365()
         
         # Extract features from the backbone (excluding classification layers)
         self.backbone = nn.Sequential(*list(base.children())[:-2])
         
+        # Freeze the backbone if specified
+        if freeze_backbone:
+            for param in self.backbone.parameters():
+                param.requires_grad = False
+            print("Backbone eingefroren")
+        
         # Global pooling to handle different input image sizes
         self.global_pool = nn.AdaptiveAvgPool2d((1, 1))
         
-        # Frequency-aware feature extraction
-        # This creates parallel pathways for each frequency band
+        # Frequency-aware feature extraction mit mehr Dropout
         self.freq_specific_layers = nn.ModuleList([
             nn.Sequential(
                 nn.Conv2d(2048, 256, kernel_size=1),
+                nn.BatchNorm2d(256),  # BatchNorm hinzugefügt
                 nn.ReLU(),
+                nn.Dropout2d(0.3),  # 2D Dropout für Conv Layer
                 nn.AdaptiveAvgPool2d((1, 1)),
                 nn.Flatten()
             ) for _ in range(num_frequencies)
         ])
         
-        # Shared layers to extract common room acoustic features
+        # Freeze the first two layers of each frequency-specific pathway if specified
+        if freeze_first_layers:
+            for freq_layer in self.freq_specific_layers:
+                # Only freeze the first two layers (Conv2d and BatchNorm)
+                for i, layer in enumerate(freq_layer):
+                    if i < 2:  # Conv2d und BatchNorm
+                        for param in layer.parameters():
+                            param.requires_grad = False
+            print("Erste Schichten der frequenzspezifischen Layer eingefroren")
+        
+        # Shared layers with more regularization
         self.shared_layers = nn.Sequential(
             nn.Flatten(),
             nn.Linear(2048, 512),
+            nn.BatchNorm1d(512),  # BatchNorm 
             nn.ReLU(),
-            nn.Dropout(0.3),
+            nn.Dropout(0.5),  # higher Dropout
             nn.Linear(512, 256),
+            nn.BatchNorm1d(256),  # BatchNorm 
             nn.ReLU(),
-            nn.Dropout(0.2)
+            nn.Dropout(0.4)  # higher Dropout
         )
         
-        # Final prediction heads - one for each frequency band
+        # Final prediction heads mit mehr Regularisierung
         self.prediction_heads = nn.ModuleList([
             nn.Sequential(
-                nn.Linear(256 + 256, 128),  # 256 from freq-specific + 256 from shared
+                nn.Linear(256 + 256, 128),
+                nn.BatchNorm1d(128),  # BatchNorm hinzugefügt
                 nn.ReLU(),
-                nn.Dropout(0.2),
-                nn.Linear(128, 1)
+                nn.Dropout(0.4),  # Höherer Dropout
+                nn.Linear(128, 64),  # Zusätzliche Schicht
+                nn.BatchNorm1d(64),
+                nn.ReLU(),
+                nn.Dropout(0.3),
+                nn.Linear(64, 1)
             ) for _ in range(num_frequencies)
         ])
         
@@ -87,8 +111,18 @@ class ReverbCNN(pl.LightningModule):
         outputs = self(inputs)
         loss = self.loss_fn(outputs, targets)
         
+        # L2 Regularisierung hinzufügen
+        l2_reg = torch.tensor(0., device=self.device)
+        for param in self.parameters():
+            if param.requires_grad:
+                l2_reg += torch.norm(param, p=2)
+        
+        # Stärkere L2 Regularisierung
+        loss += 0.001 * l2_reg
+        
         # Log metrics
         self.log("train_loss", loss, prog_bar=True)
+        self.log("l2_reg", l2_reg, prog_bar=False)
         
         # Log individual frequency band losses
         for i in range(self.hparams.num_frequencies):
@@ -112,20 +146,44 @@ class ReverbCNN(pl.LightningModule):
             
         return loss
     
+    def on_before_optimizer_step(self, optimizer):
+        total_norm = 0
+        for param in self.parameters():
+            if param.grad is not None:
+                total_norm += param.grad.data.norm(2).item() ** 2
+        total_norm = total_norm ** 0.5
+    
+        self.log("grad_norm", total_norm, prog_bar=True)
+    
+        if total_norm > 10.0:
+            print(f"WARNING: Large gradient norm: {total_norm:.2f}")
+
     def configure_optimizers(self):
-        # Use AdamW which handles weight decay better
-        optimizer = torch.optim.AdamW(
-            self.parameters(), 
-            lr=self.hparams.learning_rate,
-            weight_decay=1e-4
-        )
+        # Unterschiedliche Lernraten für eingefrorene und nicht-eingefrorene Parameter
+        if self.hparams.freeze_backbone or self.hparams.freeze_first_layers:
+            # Niedrigere Lernrate für nicht-eingefrorene Parameter
+            trainable_params = [p for p in self.parameters() if p.requires_grad]
+            optimizer = torch.optim.AdamW(
+                trainable_params,
+                lr=self.hparams.learning_rate,
+                weight_decay=5e-4  # Stärkere Weight Decay
+            )
+        else:
+            optimizer = torch.optim.AdamW(
+                self.parameters(), 
+                lr=self.hparams.learning_rate,
+                weight_decay=5e-4
+            )
+
+    
         
-        # Learning rate scheduler
+        # Aggressiverer Learning Rate Scheduler
         scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
             optimizer, 
             mode='min', 
-            factor=0.5, 
-            patience=2,
+            factor=0.3,  # Stärkere Reduktion
+            patience=5,  # Weniger Geduld
+            min_lr=1e-7  # Niedrigere minimale Lernrate
         )
         
         return {

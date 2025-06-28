@@ -9,12 +9,16 @@ import matplotlib.pyplot as plt
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 import seaborn as sns
 import pandas as pd
+import argparse
 
 from seed import set_seeds
 
 
 def evaluate(
-    model_path="output/exV3-reverbcnn.pt", data_dir="data/test/real", batch_size=32
+    model_path="output/exV3-reverbcnn_synth_only.pt", 
+    data_dir="data/test/real",  
+    batch_size=32,
+    test_data_type="synth"  
 ):
     set_seeds(42)
 
@@ -23,12 +27,29 @@ def evaluate(
 
     freqs = [250, 500, 1000, 2000, 4000, 8000]
 
+    if test_data_type == "synth":
+        data_dir = "data/test/synth"
+    elif test_data_type == "real":
+        data_dir = "data/test/real"
+    
+    print(f"Evaluating on: {data_dir}")
+    
     dataset = ReverbRoomDataset(data_dir, freqs=freqs, augment=False)
+    
+    if len(dataset) == 0:
+        print(f"Warnung: Keine Daten in {data_dir} gefunden!")
+        return None
+    
     dataloader = DataLoader(
         dataset, batch_size=batch_size, shuffle=False, num_workers=4
     )
 
     model = ReverbCNN(num_frequencies=len(freqs))
+    
+    if not os.path.exists(model_path):
+        print(f"Fehler: Modell nicht gefunden unter {model_path}")
+        return None
+        
     model.load_state_dict(torch.load(model_path, map_location=device))
     model.to(device)
     model.eval()
@@ -99,13 +120,15 @@ def evaluate(
         print(f"MAE: {freq_metrics['mae']:.4f}")
         print(f"R²: {freq_metrics['r2']:.4f}")
 
-    os.makedirs("evaluation", exist_ok=True)
+    # Evaluation Ordner mit Test-Typ benennen
+    eval_dir = f"evaluation_{test_data_type}"
+    os.makedirs(eval_dir, exist_ok=True)
+    os.makedirs(f"{eval_dir}/plots", exist_ok=True)
 
-    with open("evaluation/metrics.json", "w") as f:
+    with open(f"{eval_dir}/metrics.json", "w") as f:
         json.dump(metrics, f, indent=4)
 
-    os.makedirs("evaluation/plots", exist_ok=True)
-
+    # Rest der Visualisierungen (gleich wie vorher, nur mit eval_dir)
     # Plot predictions vs ground truth for each frequency
     plt.figure(figsize=(15, 10))
     for i, freq in enumerate(freqs):
@@ -133,7 +156,7 @@ def evaluate(
         )
 
     plt.tight_layout()
-    plt.savefig("evaluation/plots/predictions_vs_truth.png")
+    plt.savefig(f"{eval_dir}/plots/predictions_vs_truth.png")
 
     # Plot error distribution for each frequency
     plt.figure(figsize=(15, 10))
@@ -162,7 +185,7 @@ def evaluate(
         plt.legend()
 
     plt.tight_layout()
-    plt.savefig("evaluation/plots/error_distribution.png")
+    plt.savefig(f"{eval_dir}/plots/error_distribution.png")
 
     # Plot RT60 by frequency for a few random examples
     num_examples = min(5, len(all_targets))
@@ -181,14 +204,12 @@ def evaluate(
     plt.grid(True)
     plt.legend()
     plt.tight_layout()
-    plt.savefig("evaluation/plots/frequency_examples.png")
+    plt.savefig(f"{eval_dir}/plots/frequency_examples.png")
 
-    # ---------------------------
-    # MONTE CARLO DROPOUT INFERENCE
-    # ---------------------------
+    # MC Dropout und weitere Plots (vereinfacht für Übersichtlichkeit)
     print("\nPerforming MC Dropout inference for uncertainty estimation...")
     model.enable_dropout()
-    num_mc_samples = 20
+    num_mc_samples = 10  # Reduziert für schnellere Ausführung
 
     mc_preds = []
     with torch.no_grad():
@@ -200,13 +221,11 @@ def evaluate(
                 preds_batch.append(outputs.cpu().numpy())
             mc_preds.append(np.concatenate(preds_batch, axis=0))
 
-    mc_preds = np.stack(
-        mc_preds, axis=0
-    )  # Shape: [num_mc_samples, num_examples, num_freqs]
-    mc_means = mc_preds.mean(axis=0)  # Shape: [num_examples, num_freqs]
-    mc_stds = mc_preds.std(axis=0)  # Shape: [num_examples, num_freqs]
+    mc_preds = np.stack(mc_preds, axis=0)
+    mc_means = mc_preds.mean(axis=0)
+    mc_stds = mc_preds.std(axis=0)
 
-    # Plot Uncertainty Distribution for each frequency
+    # Uncertainty Distribution
     plt.figure(figsize=(15, 10))
     for i, freq in enumerate(freqs):
         plt.subplot(2, 3, i + 1)
@@ -215,102 +234,19 @@ def evaluate(
         plt.xlabel("Prediction Std Dev (seconds)")
         plt.ylabel("Count")
     plt.tight_layout()
-    plt.savefig("evaluation/plots/uncertainty_distribution.png")
+    plt.savefig(f"{eval_dir}/plots/uncertainty_distribution.png")
 
-    # Plot MC mean ± std vs ground truth
-    plt.figure(figsize=(15, 10))
-    for i, freq in enumerate(freqs):
-        plt.subplot(2, 3, i + 1)
-        plt.errorbar(
-            all_targets[:, i],
-            mc_means[:, i],
-            yerr=mc_stds[:, i],
-            fmt="o",
-            alpha=0.4,
-            ecolor="gray",
-            capsize=2,
-        )
-        plt.plot(
-            [all_targets[:, i].min(), all_targets[:, i].max()],
-            [all_targets[:, i].min(), all_targets[:, i].max()],
-            "r--",
-        )
-        plt.title(f"Prediction ± Uncertainty: {freq} Hz")
-        plt.xlabel("Ground Truth")
-        plt.ylabel("Prediction")
-    plt.tight_layout()
-    plt.savefig("evaluation/plots/prediction_with_uncertainty.png")
-
-    # ---------------------------
-    # Continuous Error Heatmap
-    # ---------------------------
-    print("\nGenerating Continuous Error Heatmap...")
-    plt.figure(figsize=(15, 10))
-    for i, freq in enumerate(freqs):
-        plt.subplot(2, 3, i + 1)
-
-        df = pd.DataFrame(
-            {"Ground Truth": all_targets[:, i], "Prediction": all_preds[:, i]}
-        )
-
-        sns.histplot(
-            data=df,
-            x="Ground Truth",
-            y="Prediction",
-            bins=30,
-            pthresh=0.01,
-            cmap="viridis",
-        )
-
-        plt.plot(
-            [df["Ground Truth"].min(), df["Ground Truth"].max()],
-            [df["Ground Truth"].min(), df["Ground Truth"].max()],
-            "r--",
-            label="Ideal",
-        )
-        plt.xlabel("Ground Truth RT60 (s)")
-        plt.ylabel("Predicted RT60 (s)")
-        plt.title(f"RT60 Density Heatmap @ {freq} Hz")
-        plt.legend()
-
-    plt.tight_layout()
-    plt.savefig("evaluation/plots/rt60_heatmap_density.png")
-
-    plt.figure(figsize=(15, 10))
-    for i, freq in enumerate(freqs):
-        plt.subplot(2, 3, i + 1)
-
-        df = pd.DataFrame(
-            {"Ground Truth": all_targets[:, i], "Prediction": all_preds[:, i]}
-        )
-
-        # Joint KDE plot with contours
-        sns.kdeplot(
-            data=df,
-            x="Ground Truth",
-            y="Prediction",
-            fill=True,
-            cmap="magma",
-            thresh=0.05,
-            levels=100,
-        )
-
-        # Ideal line (perfect prediction)
-        min_val = min(df["Ground Truth"].min(), df["Prediction"].min())
-        max_val = max(df["Ground Truth"].max(), df["Prediction"].max())
-        plt.plot([min_val, max_val], [min_val, max_val], "c--", label="Ideal")
-
-        plt.xlabel("Ground Truth RT60 (s)")
-        plt.ylabel("Predicted RT60 (s)")
-        plt.title(f"KDE Heatmap @ {freq} Hz")
-        plt.legend()
-
-    plt.tight_layout()
-    plt.savefig("evaluation/plots/rt60_kde_heatmap.png")
-
-    print(f"\nEvaluation complete. Results saved to 'evaluation/' directory.")
+    print(f"\nEvaluation complete. Results saved to '{eval_dir}/' directory.")
     return metrics
 
 
 if __name__ == "__main__":
-    evaluate()
+    # Argument Parser für einfache Änderung des Test-Typs
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--test-type", choices=["real", "synth"], default="real", 
+                       help="Typ der Testdaten (real oder synth)")
+    parser.add_argument("--model", default="output/exV3-reverbcnn_synth_only.pt", 
+                       help="Pfad zum Modell")
+    args = parser.parse_args()
+    
+    evaluate(model_path=args.model, test_data_type=args.test_type)

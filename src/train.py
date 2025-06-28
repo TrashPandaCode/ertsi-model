@@ -17,20 +17,20 @@ def train():
     print(f"Training will use: {device}")
 
     params = {
-        "synth_epochs": 100,  # Epochs for training on synthetic data
-        "real_epochs": 50,  # Epochs for fine-tuning on real data
+        "epochs": 200,  # Mehr Epochen für das frühere Early Stopping
         "batch_size": 32,
-        "lr": 0.001,
-        "fine_tune_lr": 0.0001,  # Lower learning rate for fine-tuning
+        "lr": 0.0003,
+        "fine_tune_lr": 0.00003,
         "freqs": [250, 500, 1000, 2000, 4000, 8000],
-        "synth_model_out": "output/exV3-reverbcnn_synth.pt",  # Checkpoint after synthetic training
-        "final_model_out": "output/exV3-reverbcnn.pt",  # Final fine-tuned model
+        "model_out": "output/exV3-reverbcnn_synth_only.pt",
+
     }
 
-    os.makedirs(os.path.dirname(params["synth_model_out"]), exist_ok=True)
+    os.makedirs(os.path.dirname(params["model_out"]), exist_ok=True)
 
+    # Nur synthetische Daten verwenden
     synth_train = ReverbRoomDataset(
-        ["data/train/synth/hybrid", "data/train/synth/non-hybrid"],
+        "data/train/synth",
         freqs=params["freqs"],
         augment=True,
     )
@@ -38,16 +38,8 @@ def train():
         "data/val/synth", freqs=params["freqs"], augment=False
     )
 
-    real_train = ReverbRoomDataset(
-        "data/train/real", freqs=params["freqs"], augment=True
-    )
-    real_val = ReverbRoomDataset("data/val/real", freqs=params["freqs"], augment=False)
-
-    # Print dataset sizes for information
     print(f"Synthetic training set: {len(synth_train)} samples")
     print(f"Synthetic validation set: {len(synth_val)} samples")
-    print(f"Real training set: {len(real_train)} samples")
-    print(f"Real validation set: {len(real_val)} samples")
 
     synth_train_loader = DataLoader(
         synth_train, batch_size=params["batch_size"], shuffle=True, num_workers=4
@@ -56,79 +48,50 @@ def train():
         synth_val, batch_size=params["batch_size"], shuffle=False, num_workers=4
     )
 
-    real_train_loader = DataLoader(
-        real_train, batch_size=params["batch_size"], shuffle=True, num_workers=4
+    print("\n=== Training nur auf synthetischen Daten ===")
+
+    model = ReverbCNN(
+        num_frequencies=len(params["freqs"]), 
+        learning_rate=params["lr"],
+        freeze_backbone=True,  # Backbone einfrieren
+        freeze_first_layers=True  # Erste Schichten einfrieren
     )
-    real_val_loader = DataLoader(
-        real_val, batch_size=params["batch_size"], shuffle=False, num_workers=4
-    )
 
-    print("\n=== STAGE 1: Training on synthetic data ===")
-
-    model = ReverbCNN(num_frequencies=len(params["freqs"]), learning_rate=params["lr"])
-
-    checkpoint_callback_synth = ModelCheckpoint(
-        dirpath="checkpoints/synth",
-        filename="exV3-reverbcnn-synth-{epoch:02d}-{val_loss:.4f}",
+    # Aggressiveres Early Stopping
+    checkpoint_callback = ModelCheckpoint(
+        dirpath="checkpoints/synth_only",
+        filename="exV3-reverbcnn-synth-only-{epoch:02d}-{val_loss:.4f}",
         save_top_k=3,
         monitor="val_loss",
         mode="min",
     )
 
-    early_stop_callback_synth = EarlyStopping(
-        monitor="val_loss", patience=5, mode="min"
-    )
-
-    logger_synth = TensorBoardLogger("logs", name="exV3-reverbcnn_synth")
-
-    trainer_synth = pl.Trainer(
-        max_epochs=params["synth_epochs"],
-        accelerator="auto",  # Automatically use GPU if available
-        callbacks=[checkpoint_callback_synth, early_stop_callback_synth],
-        logger=logger_synth,
-        log_every_n_steps=10,
-    )
-
-    trainer_synth.fit(model, synth_train_loader, synth_val_loader)
-
-    # Save the model after synthetic training
-    torch.save(model.state_dict(), params["synth_model_out"])
-    print(f"Synthetic model saved to {params['synth_model_out']}")
-
-    print("\n=== STAGE 2: Fine-tuning on real data ===")
-
-    # Update the learning rate for fine-tuning (lower learning rate)
-    model.learning_rate = params["fine_tune_lr"]
-
-    checkpoint_callback_real = ModelCheckpoint(
-        dirpath="checkpoints/real",
-        filename="exV3-reverbcnn-real-{epoch:02d}-{val_loss:.4f}",
-        save_top_k=3,
-        monitor="val_loss",
+    # Früheres Early Stopping mit weniger Geduld
+    early_stop_callback = EarlyStopping(
+        monitor="val_loss", 
+        patience=15,  # Weniger Geduld
         mode="min",
+        min_delta=0.001  # Minimale Verbesserung erforderlich
     )
 
-    early_stop_callback_real = EarlyStopping(
-        monitor="val_loss",
-        patience=10,
-        mode="min",  # More patience for fine-tuning
-    )
+    logger = TensorBoardLogger("logs", name="exV3-reverbcnn_synth_only")
 
-    logger_real = TensorBoardLogger("logs", name="exV3-reverbcnn_real_finetune")
-
-    trainer_real = pl.Trainer(
-        max_epochs=params["real_epochs"],
+    trainer = pl.Trainer(
+        max_epochs=params["epochs"],
         accelerator="auto",
-        callbacks=[checkpoint_callback_real, early_stop_callback_real],
-        logger=logger_real,
-        log_every_n_steps=5,
+        callbacks=[checkpoint_callback, early_stop_callback],
+        logger=logger,
+        log_every_n_steps=10,
+        gradient_clip_val=1.0,  # Gradient Clipping hinzufügen
+        gradient_clip_algorithm="norm",
+        
     )
 
-    trainer_real.fit(model, real_train_loader, real_val_loader)
+    trainer.fit(model, synth_train_loader, synth_val_loader)
 
-    # Save the final fine-tuned model
-    torch.save(model.state_dict(), params["final_model_out"])
-    print(f"Final fine-tuned model saved to {params['final_model_out']}")
+    # Modell speichern
+    torch.save(model.state_dict(), params["model_out"])
+    print(f"Modell gespeichert unter {params['model_out']}")
 
 
 if __name__ == "__main__":
