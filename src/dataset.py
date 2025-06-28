@@ -51,6 +51,9 @@ class ReverbRoomDataset(Dataset):
             if os.path.isdir(d)
         ]
 
+        # Collect all RT60 values to compute normalization stats
+        all_rt60_values = []
+
         for room_path in room_dirs:
             rt60_path = os.path.join(room_path, "rt60.csv")
 
@@ -64,10 +67,20 @@ class ReverbRoomDataset(Dataset):
                 df = df[df["Frequency (Hz)"].isin(self.freqs)]
 
             rt60_vector = torch.tensor(df["RT60 (s)"].values, dtype=torch.float32)
+            all_rt60_values.append(rt60_vector)
 
             image_paths = glob.glob(os.path.join(room_path, "images", "*.jpg"))
             for image_path in image_paths:
                 self.entries.append((image_path, rt60_vector))
+
+        # Compute normalization statistics
+        if all_rt60_values:
+            all_rt60_tensor = torch.cat(all_rt60_values, dim=0)
+            self.rt60_mean = all_rt60_tensor.mean()
+            self.rt60_std = all_rt60_tensor.std()
+        else:
+            self.rt60_mean = 0.0
+            self.rt60_std = 1.0
 
     def __len__(self):
         return len(self.entries)
@@ -76,4 +89,8 @@ class ReverbRoomDataset(Dataset):
         img_path, rt60 = self.entries[idx]
         image = Image.open(img_path).convert("RGB")
         image = self.transform(image)
-        return image, rt60
+
+        # Normalize RT60 values
+        rt60_normalized = (rt60 - self.rt60_mean) / self.rt60_std
+
+        return image, rt60_normalized

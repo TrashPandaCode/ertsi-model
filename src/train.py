@@ -9,6 +9,8 @@ import torch
 
 from seed import set_seeds
 
+experiment = "exp7"
+
 
 def train():
     set_seeds(42)
@@ -20,8 +22,8 @@ def train():
         "lr": 0.001,
         "fine_tune_lr": 0.0001,  # Lower learning rate for fine-tuning
         "freqs": [250, 500, 1000, 2000, 4000, 8000],
-        "synth_model_out": "output/exV4-reverbcnn_synth.pt",  # Checkpoint after synthetic training
-        "final_model_out": "output/exV4-reverbcnn.pt",  # Final fine-tuned model
+        "synth_model_out": f"output/{experiment}-reverbcnn_synth.pt",  # Checkpoint after synthetic training
+        "final_model_out": f"output/{experiment}-reverbcnn.pt",  # Final fine-tuned model
     }
 
     os.makedirs(os.path.dirname(params["synth_model_out"]), exist_ok=True)
@@ -66,7 +68,7 @@ def train():
 
     checkpoint_callback_synth = ModelCheckpoint(
         dirpath="checkpoints/synth",
-        filename="exV4-reverbcnn-synth-{epoch:02d}-{val_loss:.4f}",
+        filename=f"{experiment}-reverbcnn-synth-{{epoch:02d}}-{{val_loss:.4f}}",
         save_top_k=3,
         monitor="val_loss",
         mode="min",
@@ -76,7 +78,7 @@ def train():
         monitor="val_loss", patience=5, mode="min"
     )
 
-    logger_synth = TensorBoardLogger("logs", name="exV4-reverbcnn_synth")
+    logger_synth = TensorBoardLogger("logs", name=f"{experiment}-reverbcnn_synth")
 
     trainer_synth = pl.Trainer(
         max_epochs=params["synth_epochs"],
@@ -99,7 +101,7 @@ def train():
 
     checkpoint_callback_real = ModelCheckpoint(
         dirpath="checkpoints/real",
-        filename="exV4-reverbcnn-real-{epoch:02d}-{val_loss:.4f}",
+        filename=f"{experiment}-reverbcnn-real-{{epoch:02d}}-{{val_loss:.4f}}",
         save_top_k=3,
         monitor="val_loss",
         mode="min",
@@ -111,7 +113,9 @@ def train():
         mode="min",  # More patience for fine-tuning
     )
 
-    logger_real = TensorBoardLogger("logs", name="exV4-reverbcnn_real_finetune")
+    logger_real = TensorBoardLogger(
+        "logs", name=f"{experiment}-reverbcnn_real_finetune"
+    )
 
     trainer_real = pl.Trainer(
         max_epochs=params["real_epochs"],
