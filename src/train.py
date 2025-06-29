@@ -1,33 +1,41 @@
 from dataset import ReverbRoomDataset
 from model import ReverbCNN
-from torch.utils.data import DataLoader, random_split
+from torch.utils.data import DataLoader
 import pytorch_lightning as pl
-from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
+from pytorch_lightning.callbacks import (
+    ModelCheckpoint,
+    EarlyStopping,
+    LearningRateMonitor,
+)
 from pytorch_lightning.loggers import TensorBoardLogger
 import os
 import torch
-
 from seed import set_seeds
 
 
-def train():
+def train_improved_model():
     set_seeds(42)
 
+    # Enhanced parameters
     params = {
-        "synth_epochs": 100,  # Epochs for training on synthetic data
-        "real_epochs": 50,  # Epochs for fine-tuning on real data
-        "batch_size": 32,
-        "lr": 0.001,
-        "fine_tune_lr": 0.0001,  # Lower learning rate for fine-tuning
+        "synth_epochs": 80,
+        "real_epochs": 40,
+        "batch_size": 24,  # Slightly smaller due to more complex model
+        "lr": 0.0008,  # Slightly lower learning rate
+        "fine_tune_lr": 0.00005,
         "freqs": [250, 500, 1000, 2000, 4000, 8000],
-        "synth_model_out": "output/reverbcnn_synth.pt",  # Checkpoint after synthetic training
-        "final_model_out": "output/reverbcnn.pt",  # Final fine-tuned model
+        "dropout_rate": 0.15,
+        "warmup_epochs": 8,
+        "synth_model_out": "output/improved_reverbcnn_synth.pt",
+        "final_model_out": "output/improved_reverbcnn_final.pt",
     }
 
     os.makedirs(os.path.dirname(params["synth_model_out"]), exist_ok=True)
 
     synth_train = ReverbRoomDataset(
-        "data/train/synth", freqs=params["freqs"], augment=True
+        "data/train/synth",
+        freqs=params["freqs"],
+        augment=True,
     )
     synth_val = ReverbRoomDataset(
         "data/val/synth", freqs=params["freqs"], augment=False
@@ -44,85 +52,210 @@ def train():
     print(f"Real training set: {len(real_train)} samples")
     print(f"Real validation set: {len(real_val)} samples")
 
+    # Data loaders
     synth_train_loader = DataLoader(
-        synth_train, batch_size=params["batch_size"], shuffle=True, num_workers=4
+        synth_train,
+        batch_size=params["batch_size"],
+        shuffle=True,
+        num_workers=4,
+        pin_memory=True,
     )
     synth_val_loader = DataLoader(
-        synth_val, batch_size=params["batch_size"], shuffle=False, num_workers=4
+        synth_val,
+        batch_size=params["batch_size"],
+        shuffle=False,
+        num_workers=4,
+        pin_memory=True,
     )
 
     real_train_loader = DataLoader(
-        real_train, batch_size=params["batch_size"], shuffle=True, num_workers=4
+        real_train,
+        batch_size=params["batch_size"],
+        shuffle=True,
+        num_workers=4,
+        pin_memory=True,
     )
     real_val_loader = DataLoader(
-        real_val, batch_size=params["batch_size"], shuffle=False, num_workers=4
+        real_val,
+        batch_size=params["batch_size"],
+        shuffle=False,
+        num_workers=4,
+        pin_memory=True,
     )
 
-    print("\n=== STAGE 1: Training on synthetic data ===")
+    # Create and train single model
+    print(f"\n{'=' * 60}")
+    print("Training Single Model")
+    print(f"{'=' * 60}")
 
-    model = ReverbCNN(num_frequencies=len(params["freqs"]), learning_rate=params["lr"])
+    model = ReverbCNN(
+        num_frequencies=len(params["freqs"]),
+        learning_rate=params["lr"],
+        frequencies=params["freqs"],
+        dropout_rate=params["dropout_rate"],
+        use_scheduler=True,
+        warmup_epochs=params["warmup_epochs"],
+    )
 
+    # Train the model
+    trained_model = train_single_model(
+        model,
+        synth_train_loader,
+        synth_val_loader,
+        real_train_loader,
+        real_val_loader,
+        params,
+    )
+
+    print(f"\nTraining completed! Final model saved to {params['final_model_out']}")
+
+
+def train_single_model(
+    model,
+    synth_train_loader,
+    synth_val_loader,
+    real_train_loader,
+    real_val_loader,
+    params,
+    model_suffix="",
+):
+    """
+    Train a single model with two-stage training: synthetic data first, then fine-tuning on real data.
+
+    Args:
+        model: The model to train (ImprovedReverbCNN instance)
+        synth_train_loader: DataLoader for synthetic training data
+        synth_val_loader: DataLoader for synthetic validation data
+        real_train_loader: DataLoader for real training data
+        real_val_loader: DataLoader for real validation data
+        params: Dictionary containing training parameters
+        model_suffix: String suffix for naming checkpoints and logs
+
+    Returns:
+        The trained model
+    """
+
+    print(f"\n=== STAGE 1: Training on synthetic data{model_suffix} ===")
+
+    # Stage 1: Training on synthetic data
     checkpoint_callback_synth = ModelCheckpoint(
-        dirpath="checkpoints/synth",
-        filename="reverbcnn-synth-{epoch:02d}-{val_loss:.4f}",
+        dirpath=f"checkpoints/synth{model_suffix}",
+        filename=f"improved-reverbcnn-synth{model_suffix}-{{epoch:02d}}-{{val_loss:.4f}}",
         save_top_k=3,
         monitor="val_loss",
         mode="min",
+        save_last=True,
+        verbose=True,
     )
 
     early_stop_callback_synth = EarlyStopping(
-        monitor="val_loss", patience=5, mode="min"
+        monitor="val_loss",
+        patience=8,  # Slightly more patience for improved model
+        mode="min",
+        verbose=True,
+        min_delta=0.0001,  # Minimum change to qualify as improvement
     )
 
-    logger_synth = TensorBoardLogger("logs", name="reverbcnn_synth")
+    lr_monitor = LearningRateMonitor(logging_interval="epoch")
+
+    logger_synth = TensorBoardLogger(
+        "logs",
+        name=f"improved-reverbcnn_synth{model_suffix}",
+        version=None,  # Auto-increment version
+    )
 
     trainer_synth = pl.Trainer(
         max_epochs=params["synth_epochs"],
-        accelerator="auto",  # Automatically use GPU if available
-        callbacks=[checkpoint_callback_synth, early_stop_callback_synth],
+        accelerator="auto",
+        devices="auto",  # Use all available devices
+        callbacks=[checkpoint_callback_synth, early_stop_callback_synth, lr_monitor],
         logger=logger_synth,
         log_every_n_steps=10,
+        val_check_interval=0.5,  # Validate twice per epoch
+        gradient_clip_val=1.0,  # Gradient clipping for stability
+        deterministic=True,  # For reproducibility
+        enable_model_summary=True,
     )
 
+    # Fit the model on synthetic data
     trainer_synth.fit(model, synth_train_loader, synth_val_loader)
 
-    # Save the model after synthetic training
-    torch.save(model.state_dict(), params["synth_model_out"])
-    print(f"Synthetic model saved to {params["synth_model_out"]}")
+    # Save synthetic model checkpoint
+    synth_checkpoint_path = f"output/improved_reverbcnn_synth{model_suffix}.pt"
+    os.makedirs(os.path.dirname(synth_checkpoint_path), exist_ok=True)
+    torch.save(model.state_dict(), synth_checkpoint_path)
+    print(f"Synthetic model{model_suffix} saved to {synth_checkpoint_path}")
 
-    print("\n=== STAGE 2: Fine-tuning on real data ===")
+    print(f"\n=== STAGE 2: Fine-tuning on real data{model_suffix} ===")
 
-    # Update the learning rate for fine-tuning (lower learning rate)
+    # Stage 2: Fine-tuning on real data
+    # Update learning rate for fine-tuning
+    original_lr = model.learning_rate
     model.learning_rate = params["fine_tune_lr"]
 
+    # Reset the optimizer with new learning rate
+    model.configure_optimizers()
+
+    # Optional: Freeze early layers for fine-tuning (uncomment if desired)
+    # for name, param in model.named_parameters():
+    #     if 'conv1' in name or 'conv2' in name:
+    #         param.requires_grad = False
+
     checkpoint_callback_real = ModelCheckpoint(
-        dirpath="checkpoints/real",
-        filename="reverbcnn-real-{epoch:02d}-{val_loss:.4f}",
+        dirpath=f"checkpoints/real{model_suffix}",
+        filename=f"improved-reverbcnn-real{model_suffix}-{{epoch:02d}}-{{val_loss:.4f}}",
         save_top_k=3,
         monitor="val_loss",
         mode="min",
+        save_last=True,
+        verbose=True,
     )
 
     early_stop_callback_real = EarlyStopping(
-        monitor="val_loss", patience=10, mode="min"  # More patience for fine-tuning
+        monitor="val_loss",
+        patience=12,  # More patience for fine-tuning
+        mode="min",
+        verbose=True,
+        min_delta=0.00005,  # Smaller minimum delta for fine-tuning
     )
 
-    logger_real = TensorBoardLogger("logs", name="reverbcnn_real_finetune")
+    logger_real = TensorBoardLogger(
+        "logs", name=f"improved-reverbcnn_real_finetune{model_suffix}", version=None
+    )
 
     trainer_real = pl.Trainer(
         max_epochs=params["real_epochs"],
         accelerator="auto",
-        callbacks=[checkpoint_callback_real, early_stop_callback_real],
+        devices="auto",
+        callbacks=[checkpoint_callback_real, early_stop_callback_real, lr_monitor],
         logger=logger_real,
         log_every_n_steps=5,
+        val_check_interval=1.0,  # Validate every epoch during fine-tuning
+        gradient_clip_val=0.5,  # Lower gradient clipping for fine-tuning
+        deterministic=True,
+        enable_model_summary=False,  # Already shown in stage 1
     )
 
+    # Fine-tune the model on real data
     trainer_real.fit(model, real_train_loader, real_val_loader)
 
-    # Save the final fine-tuned model
-    torch.save(model.state_dict(), params["final_model_out"])
-    print(f"Final fine-tuned model saved to {params['final_model_out']}")
+    # Save final fine-tuned model
+    final_checkpoint_path = f"output/improved_reverbcnn_final{model_suffix}.pt"
+    torch.save(model.state_dict(), final_checkpoint_path)
+    print(f"Final fine-tuned model{model_suffix} saved to {final_checkpoint_path}")
+
+    # Restore original learning rate for consistency
+    model.learning_rate = original_lr
+
+    # Get best validation loss for logging
+    try:
+        best_val_loss = trainer_real.callback_metrics.get("val_loss", "N/A")
+        print(f"Best validation loss{model_suffix}: {best_val_loss}")
+    except:
+        print(f"Could not retrieve best validation loss{model_suffix}")
+
+    return model
 
 
 if __name__ == "__main__":
-    train()
+    train_improved_model()

@@ -19,11 +19,16 @@ class ReverbRoomDataset(Dataset):
 
         if augment:
             base_transforms += [
-                T.RandomResizedCrop(224, scale=(0.8, 1.0)),
+                T.RandomResizedCrop(224, scale=(0.7, 1.0)),  # More aggressive cropping
                 T.RandomHorizontalFlip(p=0.5),
-                T.RandomRotation(degrees=5),
-                T.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.1, hue=0.02),
-                T.GaussianBlur(kernel_size=(3, 3), sigma=(0.1, 1.0)),
+                T.RandomRotation(degrees=10),  # Slightly more rotation
+                T.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.2, hue=0.05),
+                T.RandomApply(
+                    [T.GaussianBlur(kernel_size=(3, 3), sigma=(0.1, 2.0))], p=0.3
+                ),
+                T.RandomApply(
+                    [T.RandomPerspective(distortion_scale=0.1)], p=0.2
+                ),  # Perspective changes
             ]
         else:
             base_transforms += [

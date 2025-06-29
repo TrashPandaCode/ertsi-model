@@ -14,7 +14,7 @@ from seed import set_seeds
 
 
 def evaluate(
-    model_path="output/reverbcnn.pt", data_dir="data/test/real", batch_size=32
+    model_path="output/synth_only_final.pt", data_dir="data/test/real", batch_size=32
 ):
     set_seeds(42)
 
